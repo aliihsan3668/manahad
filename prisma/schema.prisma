@@ -1,0 +1,537 @@
+// MathVerse Database Schema
+// Production-grade normalized relational schema
+// Designed to be portable to Supabase Postgres (just swap datasource provider)
+// All tables support RLS-equivalent patterns via application-layer authorization
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// CORE USER MODEL
+// ============================================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  displayName   String
+  passwordHash  String
+  role          String   @default("CHILD") // CHILD | PARENT | TEACHER | MODERATOR | ADMIN
+  avatarConfig  String   @default("{}") // JSON: skinTone, hair, hat, outfit, accessory, pet, trail
+  brainEnergy   Int      @default(100)
+  maxBrainEnergy Int     @default(100)
+  xp            Int      @default(0)
+  level         Int      @default(1)
+  coins         Int      @default(0)
+  streak        Int      @default(0)
+  lastActiveAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  parentLinks       ChildParentLink[]
+  childrenAsParent  ChildParentLink[]      @relation("ParentChildren")
+  sentFriendRequests   Friendship[]         @relation("FriendshipRequester")
+  receivedFriendRequests Friendship[]       @relation("FriendshipReceiver")
+  chatMessages      ChatMessage[]
+  chatReportsByUser ChatReport[]           @relation("ReportsByUser")
+  chatReportsAgainstUser ChatReport[]      @relation("ReportsAgainstUser")
+  moderationActions ModerationAction[]     @relation("ModeratedUser")
+  moderationByAction ModerationAction[]    @relation("ModeratorAction")
+  questionsAuthored Question[]
+  attempts          Attempt[]
+  masteryRecords    Mastery[]
+  achievements      UserAchievement[]
+  inventoryItems    InventoryItem[]
+  questsAssigned    UserQuest[]
+  analyticsEvents   AnalyticsEvent[]
+  notifications     Notification[]
+  parentSettings    ParentSettings?
+  dailyStats        DailyStat[]
+  tutorSessions     TutorSession[]
+  worldPositions    WorldPresence[]
+  appealsFiled    Appeal[]
+  reviewedAppeals Appeal[]                 @relation("AppealReviewer")
+}
+
+// Links a child account to a parent/guardian account
+// Supports multiple parents (e.g. mom + dad) and multiple children per parent
+model ChildParentLink {
+  id          String   @id @default(cuid())
+  childId     String
+  parentId    String
+  relation    String   @default("PARENT") // PARENT | GUARDIAN | TEACHER
+  approved    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  child       User     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent      User     @relation("ParentChildren", fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, parentId, relation])
+}
+
+model ParentSettings {
+  id                  String   @id @default(cuid())
+  parentId            String   @unique
+  chatEnabled         Boolean  @default(true)
+  approvedFriendsOnly Boolean  @default(false)
+  friendApprovalRequired Boolean @default(true)
+  playtimeMinutesPerDay Int    @default(120)
+  playtimeMinutesPerSession Int @default(60)
+  weeklyReportEmail   Boolean  @default(true)
+  alertOnModeration   Boolean  @default(true)
+  alertOnFriendRequest Boolean @default(true)
+  realNameSharing     Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  parent              User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// FRIENDS / SOCIAL
+// ============================================================
+
+model Friendship {
+  id           String   @id @default(cuid())
+  requesterId  String
+  receiverId   String
+  status       String   @default("PENDING") // PENDING | ACCEPTED | BLOCKED | DECLINED
+  parentApproved Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requester    User     @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver     User     @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId])
+}
+
+// ============================================================
+// CHAT / MODERATION
+// ============================================================
+
+model ChatMessage {
+  id              String   @id @default(cuid())
+  userId          String
+  channelId       String   @default("world") // world | party | guild | pm:<id> | local:<region>
+  rawContent      String
+  displayedContent String  @default("") // possibly rewritten/filtered
+  moderationStatus String  @default("PENDING") // PENDING | APPROVED | BLOCKED | HIDDEN | REWRITTEN | ESCALATED
+  moderationReason String  @default("")
+  aiConfidence    Float    @default(0)
+  ruleFlags       String   @default("[]") // JSON array of rule IDs triggered
+  aiFlags         String   @default("[]") // JSON array of AI category flags
+  wasAutoFiltered Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports         ChatReport[]
+
+  @@index([channelId, createdAt])
+  @@index([userId, createdAt])
+  @@index([moderationStatus])
+}
+
+model ChatReport {
+  id              String   @id @default(cuid())
+  messageId       String
+  reportedBy      String
+  reportedUserId  String
+  reason          String   // profanity | bullying | personal_info | spam | grooming | other
+  notes           String   @default("")
+  status          String   @default("OPEN") // OPEN | REVIEWING | RESOLVED | DISMISSED
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+
+  message         ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporter        User     @relation("ReportsByUser", fields: [reportedBy], references: [id], onDelete: Cascade)
+  reportedUser    User     @relation("ReportsAgainstUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model ModerationAction {
+  id              String   @id @default(cuid())
+  userId          String
+  moderatorId     String?
+  actionType      String   // WARNING | MUTE | SUSPEND | BAN | UNMUTE | UNSUSPEND
+  reason          String
+  durationMinutes Int      @default(0) // 0 = permanent or warning
+  aiTriggered     Boolean  @default(false)
+  aiConfidence    Float    @default(0)
+  active          Boolean  @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation("ModeratedUser", fields: [userId], references: [id], onDelete: Cascade)
+  moderator       User?    @relation("ModeratorAction", fields: [moderatorId], references: [id], onDelete: SetNull)
+  appeals         Appeal[] @relation("ActionAppeals")
+
+  @@index([userId, active])
+}
+
+model Appeal {
+  id              String   @id @default(cuid())
+  userId          String
+  actionId        String
+  reason          String
+  status          String   @default("OPEN") // OPEN | APPROVED | DENIED | UNDER_REVIEW
+  reviewerId      String?
+  reviewNotes     String   @default("")
+  createdAt       DateTime @default(now())
+  reviewedAt      DateTime?
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewer        User?    @relation("AppealReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  action          ModerationAction @relation("ActionAppeals", fields: [actionId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// CURRICULUM
+// ============================================================
+
+model Curriculum {
+  id          String   @id @default(cuid())
+  code        String   @unique // PAK-NATIONAL | CAMBRIDGE | IB | COMMON-CORE | CBSE
+  name        String
+  description String
+  region      String
+  createdAt   DateTime @default(now())
+
+  grades      Grade[]
+  topics      CurriculumTopic[]
+}
+
+model Grade {
+  id            String   @id @default(cuid())
+  curriculumId  String
+  gradeLevel    Int      // 0=K, 1..12
+  name          String
+  description   String   @default("")
+
+  curriculum    Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  topics        CurriculumTopic[]
+
+  @@unique([curriculumId, gradeLevel])
+}
+
+model CurriculumTopic {
+  id            String   @id @default(cuid())
+  curriculumId  String
+  gradeId       String?
+  parentId      String?  // for subtopics
+  slug          String
+  name          String
+  description   String   @default("")
+  difficulty    Int      @default(1) // 1-5 baseline difficulty
+  sortOrder     Int      @default(0)
+  learningObjective String @default("")
+  bloomsLevel   String   @default("UNDERSTAND") // REMEMBER | UNDERSTAND | APPLY | ANALYZE | EVALUATE | CREATE
+  estimatedMinutes Int   @default(10)
+  prerequisites String   @default("[]") // JSON array of topic IDs
+
+  curriculum    Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
+  grade         Grade?     @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  parent        CurriculumTopic? @relation("TopicTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children      CurriculumTopic[] @relation("TopicTree")
+  questions     Question[]
+  masteryRecords Mastery[]
+
+  @@unique([curriculumId, slug])
+}
+
+// ============================================================
+// QUESTIONS & ATTEMPTS
+// ============================================================
+
+model Question {
+  id              String   @id @default(cuid())
+  topicId         String
+  questionType    String   @default("MULTIPLE_CHOICE") // MULTIPLE_CHOICE | NUMERIC | FRACTION | EXPRESSION | WORD_PROBLEM | TRUE_FALSE
+  prompt          String
+  promptLatex     String   @default("")
+  choices         String   @default("[]") // JSON for MC
+  correctAnswer   String
+  acceptedAnswers String   @default("[]") // JSON of equivalent accepted answers
+  explanation     String   @default("")
+  hint            String   @default("")
+  commonMistakes  String   @default("[]") // JSON
+  difficulty      Int      @default(3) // 1-5
+  estimatedSolveSec Int    @default(60)
+  bloomsLevel     String   @default("APPLY")
+  scenario        String   @default("") // randomized context (e.g. "Ali had 5 apples")
+  metadata        String   @default("{}") // JSON
+  generatedByAI   Boolean  @default(true)
+  authorId        String?  // null = system generated
+  isFlagged       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  topic           CurriculumTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author          User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  attempts        Attempt[]
+
+  @@index([topicId, difficulty])
+}
+
+model Attempt {
+  id              String   @id @default(cuid())
+  userId          String
+  questionId      String
+  userAnswer      String
+  isCorrect       Boolean
+  isEquivalent    Boolean  @default(false) // mathematically equivalent but not exact
+  timeTakenSec    Int      @default(0)
+  hintsUsed       Int      @default(0)
+  xpEarned        Int      @default(0)
+  brainEnergyEarned Int    @default(0)
+  confidence      Float    @default(0.5) // student confidence self-report 0..1
+  feedbackRequested Boolean @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question        Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([questionId, createdAt])
+}
+
+model Mastery {
+  id              String   @id @default(cuid())
+  userId          String
+  topicId         String
+  masteryScore    Float    @default(0) // 0..1
+  attemptsCount   Int      @default(0)
+  correctCount    Int      @default(0)
+  avgTimeSec      Float    @default(0)
+  lastReviewedAt  DateTime @default(now())
+  nextReviewAt    DateTime @default(now()) // spaced repetition schedule
+  streak          Int      @default(0)
+  confidenceScore Float    @default(0.5)
+  isWeak          Boolean  @default(false)
+  isMastered      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic           CurriculumTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, isWeak])
+  @@index([nextReviewAt])
+}
+
+// ============================================================
+// AI TUTOR
+// ============================================================
+
+model TutorSession {
+  id              String   @id @default(cuid())
+  userId          String
+  questionId      String?
+  messages        String   @default("[]") // JSON array of {role, content}
+  startedAt       DateTime @default(now())
+  lastMessageAt   DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lastMessageAt])
+}
+
+// ============================================================
+// ACHIEVEMENTS / QUESTS
+// ============================================================
+
+model Achievement {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  description   String
+  icon          String   @default("trophy")
+  category      String   @default("LEARNING") // LEARNING | SOCIAL | EXPLORATION | STREAK | MASTERY
+  xpReward      Int      @default(0)
+  coinsReward   Int      @default(0)
+  criteria      String   @default("{}") // JSON criteria
+  rarity        String   @default("COMMON") // COMMON | RARE | EPIC | LEGENDARY
+
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  progress      Float    @default(0) // 0..1
+  completed     Boolean  @default(false)
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement  @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+model Quest {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  description   String
+  questType     String   @default("DAILY") // DAILY | WEEKLY | MONTHLY | SEASONAL | STORY
+  category      String   @default("LEARNING")
+  target        Int      @default(10)
+  xpReward      Int      @default(50)
+  coinsReward   Int      @default(20)
+  brainEnergyReward Int  @default(20)
+  cosmeticRewardId String?
+  startsAt      DateTime @default(now())
+  endsAt        DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  userQuests    UserQuest[]
+}
+
+model UserQuest {
+  id            String   @id @default(cuid())
+  userId        String
+  questId       String
+  progress      Int      @default(0)
+  completed     Boolean  @default(false)
+  claimedAt     DateTime?
+  assignedAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest         Quest    @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questId])
+}
+
+// ============================================================
+// COSMETICS / INVENTORY / HOUSING
+// ============================================================
+
+model Cosmetic {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  category      String   // HAT | HAIR | OUTFIT | ACCESSORY | SHOES | BACKPACK | PET | TRAIL | EMOTE | FURNITURE
+  rarity        String   @default("COMMON")
+  iconKey       String   @default("")
+  color         String   @default("")
+  price         Int      @default(0) // in coins
+  isDefault     Boolean  @default(false)
+  unlockCriteria String  @default("{}") // grade level / achievement / quest
+  metadata      String   @default("{}")
+  createdAt     DateTime @default(now())
+
+  inventoryItems InventoryItem[]
+}
+
+model InventoryItem {
+  id            String   @id @default(cuid())
+  userId        String
+  cosmeticId    String
+  isEquipped    Boolean  @default(false)
+  acquiredAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cosmetic      Cosmetic @relation(fields: [cosmeticId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cosmeticId])
+}
+
+model House {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  theme         String   @default("forest")
+  furniture     String   @default("{}") // JSON layout of furniture items
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================================
+// WORLD / PRESENCE
+// ============================================================
+
+model WorldPresence {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  area          String   @default("town") // town | school | park | beach | forest | castle | lab | library | space | museum | zoo | arcade
+  x             Float    @default(400)
+  y             Float    @default(300)
+  direction     String   @default("down")
+  isMoving      Boolean  @default(false)
+  lastSeenAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NPC {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  area          String
+  x             Float
+  y             Float
+  dialogues     String   @default("[]")
+  questSlug     String?
+  cosmeticId    String?
+}
+
+// ============================================================
+// ANALYTICS / NOTIFICATIONS
+// ============================================================
+
+model AnalyticsEvent {
+  id            String   @id @default(cuid())
+  userId        String?
+  eventType     String
+  eventProps    String   @default("{}") // JSON
+  sessionId     String?
+  anonymized    Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
+}
+
+model DailyStat {
+  id            String   @id @default(cuid())
+  userId        String
+  date          String   // YYYY-MM-DD
+  questionsAnswered Int  @default(0)
+  correctCount  Int      @default(0)
+  xpEarned      Int      @default(0)
+  timeSpentMin  Int      @default(0)
+  brainEnergyEarned Int  @default(0)
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  userId        String
+  type          String   // FRIEND_REQUEST | QUEST_COMPLETE | ACHIEVEMENT | MODERATION | SYSTEM | TUTOR
+  title         String
+  body          String   @default("")
+  link          String   @default("")
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
