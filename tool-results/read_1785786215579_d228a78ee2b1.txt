@@ -1,0 +1,715 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * MANAHAD — Game World View
+     5→ *
+     6→ * A 2D top-down canvas world where players can:
+     7→ *   - Walk around (WASD / arrow keys / touch joystick)
+     8→ *   - See other players moving in realtime (via WebSocket)
+     9→ *   - Chat with nearby players (chat panel)
+    10→ *   - Walk into portals to change areas
+    11→ *   - Talk to NPCs (opens dialogue)
+    12→ *   - Use emotes
+    13→ *
+    14→ * The world is rendered on a canvas with requestAnimationFrame.
+    15→ * Player position is synced to the server at ~30Hz.
+    16→ */
+    17→
+    18→import { useEffect, useRef, useState, useCallback } from "react";
+    19→import { motion, AnimatePresence } from "framer-motion";
+    20→import { Button } from "@/components/ui/button";
+    21→import { Input } from "@/components/ui/input";
+    22→import { ScrollArea } from "@/components/ui/scroll-area";
+    23→import { Card } from "@/components/ui/card";
+    24→import { useAppStore } from "@/stores/app-store";
+    25→import { useMultiplayerStore } from "@/stores/multiplayer-store";
+    26→import { renderAvatar } from "./avatar-renderer";
+    27→import { WORLD_AREAS, NPCS, getAreaBySlug, getNPCBySlug } from "@/lib/game/world";
+    28→import { toast } from "sonner";
+    29→import {
+    30→  Send, MapPin, Users, Sparkles, MessageCircle, Gamepad2, X, ChevronRight, Zap,
+    31→} from "lucide-react";
+    32→
+    33→interface ActiveEmote {
+    34→  userId: string;
+    35→  emoji: string;
+    36→  startFrame: number;
+    37→}
+    38→
+    39→export function WorldView() {
+    40→  const user = useAppStore((s) => s.user);
+    41→  const setView = useAppStore((s) => s.setView);
+    42→  const updateUser = useAppStore((s) => s.updateUser);
+    43→  const dyslexiaFont = useAppStore((s) => s.dyslexiaFont);
+    44→
+    45→  const canvasRef = useRef<HTMLCanvasElement>(null);
+    46→  const containerRef = useRef<HTMLDivElement>(null);
+    47→
+    48→  const {
+    49→    connect, disconnect, connected, players, messages, currentArea,
+    50→    moveTo, changeArea, sendChat, sendEmote,
+    51→  } = useMultiplayerStore();
+    52→
+    53→  // Local player position (high-frequency, synced to server)
+    54→  const playerPos = useRef({ x: 500, y: 400, direction: "down" as const, isMoving: false });
+    55→  const keysPressed = useRef<Set<string>>(new Set());
+    56→  const animFrame = useRef(0);
+    57→  const activeEmotes = useRef<ActiveEmote[]>([]);
+    58→  const [chatInput, setChatInput] = useState("");
+    59→  const [showChat, setShowChat] = useState(true);
+    60→  const [showMobileControls, setShowMobileControls] = useState(false);
+    61→  const [activeNPC, setActiveNPC] = useState<string | null>(null);
+    62→
+    63→  const area = getAreaBySlug(currentArea) ?? WORLD_AREAS[0];
+    64→
+    65→  // === Connect to multiplayer ===
+    66→  useEffect(() => {
+    67→    if (!user) return;
+    68→    connect({
+    69→      userId: user.id,
+    70→      username: user.username,
+    71→      displayName: user.displayName,
+    72→      avatarConfig: user.avatarConfig,
+    73→      area: "town",
+    74→      level: user.level,
+    75→    });
+    76→    return () => disconnect();
+    77→  }, [user?.id]);
+    78→
+    79→  // === Listen for emote events ===
+    80→  useEffect(() => {
+    81→    function onEmote(e: Event) {
+    82→      const detail = (e as CustomEvent).detail;
+    83→      activeEmotes.current.push({
+    84→        userId: detail.userId,
+    85→        emoji: detail.emoteSlug === "emote-wave" ? "👋" :
+    86→               detail.emoteSlug === "emote-dance" ? "💃" :
+    87→               detail.emoteSlug === "emote-cheer" ? "🎉" :
+    88→               detail.emoteSlug === "emote-thinking" ? "🤔" : "✨",
+    89→        startFrame: animFrame.current,
+    90→      });
+    91→    }
+    92→    window.addEventListener("mv:emote", onEmote);
+    93→    return () => window.removeEventListener("mv:emote", onEmote);
+    94→  }, []);
+    95→
+    96→  // === Keyboard input ===
+    97→  useEffect(() => {
+    98→    function onKey(e: KeyboardEvent) {
+    99→      const target = e.target as HTMLElement;
+   100→      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+   101→      const key = e.key.toLowerCase();
+   102→      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+   103→        e.preventDefault();
+   104→        keysPressed.current.add(key);
+   105→      }
+   106→      // Quick emotes
+   107→      if (key === "e") sendEmote("emote-wave");
+   108→      if (key === "r") sendEmote("emote-dance");
+   109→      if (key === "t") sendEmote("emote-thinking");
+   110→    }
+   111→    function onKeyUp(e: KeyboardEvent) {
+   112→      const target = e.target as HTMLElement;
+   113→      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+   114→      keysPressed.current.delete(e.key.toLowerCase());
+   115→    }
+   116→    window.addEventListener("keydown", onKey);
+   117→    window.addEventListener("keyup", onKeyUp);
+   118→    return () => {
+   119→      window.removeEventListener("keydown", onKey);
+   120→      window.removeEventListener("keyup", onKeyUp);
+   121→    };
+   122→  }, [sendEmote]);
+   123→
+   124→  // === Touch joystick ===
+   125→  const joystickRef = useRef<{ active: boolean; dx: number; dy: number }>({ active: false, dx: 0, dy: 0 });
+   126→  const [joystickOffset, setJoystickOffset] = useState({ dx: 0, dy: 0 });
+   127→  const onTouchStart = useCallback((e: React.TouchEvent) => {
+   128→    const rect = (e.target as HTMLElement).getBoundingClientRect();
+   129→    const touch = e.touches[0];
+   130→    joystickRef.current = {
+   131→      active: true,
+   132→      dx: touch.clientX - (rect.left + rect.width / 2),
+   133→      dy: touch.clientY - (rect.top + rect.height / 2),
+   134→    };
+   135→    setJoystickOffset({ dx: joystickRef.current.dx, dy: joystickRef.current.dy });
+   136→  }, []);
+   137→  const onTouchMove = useCallback((e: React.TouchEvent) => {
+   138→    if (!joystickRef.current.active) return;
+   139→    const rect = (e.target as HTMLElement).getBoundingClientRect();
+   140→    const touch = e.touches[0];
+   141→    joystickRef.current.dx = touch.clientX - (rect.left + rect.width / 2);
+   142→    joystickRef.current.dy = touch.clientY - (rect.top + rect.height / 2);
+   143→    setJoystickOffset({ dx: joystickRef.current.dx, dy: joystickRef.current.dy });
+   144→  }, []);
+   145→  const onTouchEnd = useCallback(() => {
+   146→    joystickRef.current = { active: false, dx: 0, dy: 0 };
+   147→    setJoystickOffset({ dx: 0, dy: 0 });
+   148→  }, []);
+   149→
+   150→  // === Main game loop ===
+   151→  useEffect(() => {
+   152→    const canvas = canvasRef.current;
+   153→    if (!canvas) return;
+   154→    const ctx = canvas.getContext("2d");
+   155→    if (!ctx) return;
+   156→
+   157→    let rafId: number;
+   158→
+   159→    function resize() {
+   160→      if (!canvas || !containerRef.current) return;
+   161→      const dpr = window.devicePixelRatio || 1;
+   162→      const rect = containerRef.current.getBoundingClientRect();
+   163→      canvas.width = rect.width * dpr;
+   164→      canvas.height = rect.height * dpr;
+   165→      canvas.style.width = `${rect.width}px`;
+   166→      canvas.style.height = `${rect.height}px`;
+   167→      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+   168→    }
+   169→    resize();
+   170→    window.addEventListener("resize", resize);
+   171→
+   172→    let lastServerSync = 0;
+   173→
+   174→    function tick() {
+   175→      animFrame.current++;
+   176→      const rect = canvas!.getBoundingClientRect();
+   177→      const w = rect.width;
+   178→      const h = rect.height;
+   179→
+   180→      // === Update local player position from input ===
+   181→      let dx = 0, dy = 0;
+   182→      const keys = keysPressed.current;
+   183→      if (keys.has("w") || keys.has("arrowup")) dy -= 1;
+   184→      if (keys.has("s") || keys.has("arrowdown")) dy += 1;
+   185→      if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
+   186→      if (keys.has("d") || keys.has("arrowright")) dx += 1;
+   187→
+   188→      // Joystick input
+   189→      if (joystickRef.current.active) {
+   190→        const j = joystickRef.current;
+   191→        const mag = Math.sqrt(j.dx * j.dx + j.dy * j.dy);
+   192→        if (mag > 10) {
+   193→          dx = j.dx / mag;
+   194→          dy = j.dy / mag;
+   195→        }
+   196→      }
+   197→
+   198→      const speed = 3.5;
+   199→      const moving = (dx !== 0 || dy !== 0);
+   200→      if (moving) {
+   201→        const norm = Math.sqrt(dx * dx + dy * dy) || 1;
+   202→        const ndx = dx / norm;
+   203→        const ndy = dy / norm;
+   204→        playerPos.current.x = Math.max(20, Math.min(area.width - 20, playerPos.current.x + ndx * speed));
+   205→        playerPos.current.y = Math.max(60, Math.min(area.height - 20, playerPos.current.y + ndy * speed));
+   206→        // Set direction (dominant axis)
+   207→        if (Math.abs(ndx) > Math.abs(ndy)) {
+   208→          playerPos.current.direction = ndx > 0 ? "right" : "left";
+   209→        } else {
+   210→          playerPos.current.direction = ndy > 0 ? "down" : "up";
+   211→        }
+   212→        playerPos.current.isMoving = true;
+   213→      } else {
+   214→        playerPos.current.isMoving = false;
+   215→      }
+   216→
+   217→      // === Sync to server (~30Hz) ===
+   218→      const now = Date.now();
+   219→      if (now - lastServerSync > 33 && moving) {
+   220→        moveTo(playerPos.current.x, playerPos.current.y, playerPos.current.direction);
+   221→        lastServerSync = now;
+   222→      }
+   223→
+   224→      // === Camera follows player ===
+   225→      const camX = playerPos.current.x - w / 2;
+   226→      const camY = playerPos.current.y - h / 2;
+   227→
+   228→      // === Clear ===
+   229→      ctx!.fillStyle = area.bgColor;
+   230→      ctx!.fillRect(0, 0, w, h);
+   231→
+   232→      // === Camera transform ===
+   233→      ctx!.save();
+   234→      ctx!.translate(-camX, -camY);
+   235→
+   236→      // === Background pattern (subtle grid) ===
+   237→      ctx!.strokeStyle = "rgba(255,255,255,0.08)";
+   238→      ctx!.lineWidth = 1;
+   239→      const gridSize = 60;
+   240→      const startX = Math.floor(camX / gridSize) * gridSize;
+   241→      const startY = Math.floor(camY / gridSize) * gridSize;
+   242→      for (let x = startX; x < camX + w; x += gridSize) {
+   243→        ctx!.beginPath();
+   244→        ctx!.moveTo(x, camY);
+   245→        ctx!.lineTo(x, camY + h);
+   246→        ctx!.stroke();
+   247→      }
+   248→      for (let y = startY; y < camY + h; y += gridSize) {
+   249→        ctx!.beginPath();
+   250→        ctx!.moveTo(camX, y);
+   251→        ctx!.lineTo(camX + w, y);
+   252→        ctx!.stroke();
+   253→      }
+   254→
+   255→      // === Area boundary ===
+   256→      ctx!.strokeStyle = "rgba(0,0,0,0.2)";
+   257→      ctx!.lineWidth = 4;
+   258→      ctx!.strokeRect(0, 0, area.width, area.height);
+   259→
+   260→      // === Decorations ===
+   261→      for (const dec of area.decorations) {
+   262→        ctx!.fillStyle = dec.color;
+   263→        ctx!.strokeStyle = "rgba(0,0,0,0.15)";
+   264→        ctx!.lineWidth = 2;
+   265→        if (dec.type === "tree") {
+   266→          // Trunk
+   267→          ctx!.fillStyle = "#5a3a1a";
+   268→          ctx!.fillRect(dec.x + dec.w / 2 - 5, dec.y + dec.h / 2, 10, dec.h / 2);
+   269→          // Leaves
+   270→          ctx!.fillStyle = dec.color;
+   271→          ctx!.beginPath();
+   272→          ctx!.arc(dec.x + dec.w / 2, dec.y + dec.h / 2, dec.w / 2, 0, Math.PI * 2);
+   273→          ctx!.fill();
+   274→          ctx!.stroke();
+   275→        } else if (dec.type === "pond") {
+   276→          ctx!.fillStyle = dec.color;
+   277→          ctx!.beginPath();
+   278→          ctx!.ellipse(dec.x + dec.w / 2, dec.y + dec.h / 2, dec.w / 2, dec.h / 2, 0, 0, Math.PI * 2);
+   279→          ctx!.fill();
+   280→          // Ripple
+   281→          ctx!.strokeStyle = "rgba(255,255,255,0.4)";
+   282→          ctx!.beginPath();
+   283→          ctx!.ellipse(dec.x + dec.w / 2, dec.y + dec.h / 2, dec.w / 3, dec.h / 3, 0, 0, Math.PI * 2);
+   284→          ctx!.stroke();
+   285→        } else if (dec.type === "building") {
+   286→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   287→          ctx!.strokeRect(dec.x, dec.y, dec.w, dec.h);
+   288→          // Roof
+   289→          ctx!.fillStyle = "rgba(0,0,0,0.2)";
+   290→          ctx!.beginPath();
+   291→          ctx!.moveTo(dec.x, dec.y);
+   292→          ctx!.lineTo(dec.x + dec.w / 2, dec.y - 15);
+   293→          ctx!.lineTo(dec.x + dec.w, dec.y);
+   294→          ctx!.closePath();
+   295→          ctx!.fill();
+   296→        } else if (dec.type === "flower") {
+   297→          ctx!.beginPath();
+   298→          ctx!.arc(dec.x + 5, dec.y + 5, 4, 0, Math.PI * 2);
+   299→          ctx!.arc(dec.x + 15, dec.y + 5, 4, 0, Math.PI * 2);
+   300→          ctx!.arc(dec.x + 10, dec.y, 4, 0, Math.PI * 2);
+   301→          ctx!.arc(dec.x + 10, dec.y + 10, 4, 0, Math.PI * 2);
+   302→          ctx!.arc(dec.x + 10, dec.y + 5, 3, 0, Math.PI * 2);
+   303→          ctx!.fill();
+   304→        } else if (dec.type === "machine" || dec.type === "stall") {
+   305→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   306→          ctx!.strokeRect(dec.x, dec.y, dec.w, dec.h);
+   307→          // Glow
+   308→          ctx!.fillStyle = "rgba(255,255,255,0.3)";
+   309→          ctx!.fillRect(dec.x + 5, dec.y + 5, dec.w - 10, 8);
+   310→        } else if (dec.type === "neon-sign" || dec.type === "awning" || dec.type === "rug" || dec.type === "path") {
+   311→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   312→        } else if (dec.type === "door") {
+   313→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   314→          ctx!.fillStyle = "#fbbf24";
+   315→          ctx!.beginPath();
+   316→          ctx!.arc(dec.x + dec.w - 8, dec.y + dec.h / 2, 2, 0, Math.PI * 2);
+   317→          ctx!.fill();
+   318→        } else if (dec.type === "blackboard") {
+   319→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   320→          // Chalk text
+   321→          ctx!.fillStyle = "#ffffff";
+   322→          ctx!.font = "12px var(--font-geist-sans), sans-serif";
+   323→          ctx!.textAlign = "center";
+   324→          ctx!.fillText("MATH = MAGIC ✨", dec.x + dec.w / 2, dec.y + dec.h / 2 + 4);
+   325→        } else if (dec.type === "desk") {
+   326→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   327→          ctx!.strokeRect(dec.x, dec.y, dec.w, dec.h);
+   328→        } else if (dec.type === "bench") {
+   329→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   330→        } else if (dec.type === "fountain") {
+   331→          ctx!.fillStyle = dec.color;
+   332→          ctx!.beginPath();
+   333→          ctx!.ellipse(dec.x + dec.w / 2, dec.y + dec.h / 2, dec.w / 2, dec.h / 2, 0, 0, Math.PI * 2);
+   334→          ctx!.fill();
+   335→          ctx!.fillStyle = "rgba(255,255,255,0.4)";
+   336→          ctx!.beginPath();
+   337→          ctx!.ellipse(dec.x + dec.w / 2, dec.y + dec.h / 2, dec.w / 3, dec.h / 3, 0, 0, Math.PI * 2);
+   338→          ctx!.fill();
+   339→        } else {
+   340→          ctx!.fillRect(dec.x, dec.y, dec.w, dec.h);
+   341→        }
+   342→      }
+   343→
+   344→      // === Portals ===
+   345→      for (const portal of area.portals) {
+   346→        const pulse = Math.sin(animFrame.current * 0.06) * 0.2 + 0.8;
+   347→        ctx!.fillStyle = `rgba(168, 85, 247, ${0.3 * pulse})`;
+   348→        ctx!.beginPath();
+   349→        ctx!.arc(portal.x, portal.y, 30, 0, Math.PI * 2);
+   350→        ctx!.fill();
+   351→        ctx!.strokeStyle = `rgba(168, 85, 247, ${pulse})`;
+   352→        ctx!.lineWidth = 3;
+   353→        ctx!.stroke();
+   354→        // Label
+   355→        ctx!.fillStyle = "#1f2937";
+   356→        ctx!.font = "500 9px var(--font-geist-sans), sans-serif";
+   357→        ctx!.textAlign = "center";
+   358→        ctx!.fillText(portal.label, portal.x, portal.y - 35);
+   359→
+   360→        // Check if player is on portal — trigger transition directly (debounced)
+   361→        const dist = Math.sqrt((portal.x - playerPos.current.x) ** 2 + (portal.y - playerPos.current.y) ** 2);
+   362→        if (dist < 35) {
+   363→          const now = Date.now();
+   364→          if (now - lastTransitionAt.current > 1500) {
+   365→            lastTransitionAt.current = now;
+   366→            // Defer to next tick to avoid setState during render
+   367→            setTimeout(() => doAreaTransition(portal.target), 0);
+   368→          }
+   369→        }
+   370→      }
+   371→
+   372→      // === NPCs ===
+   373→      for (const npcDef of area.npcs) {
+   374→        const npc = getNPCBySlug(npcDef.slug);
+   375→        if (!npc) continue;
+   376→        // Render as a colored circle with emoji
+   377→        ctx!.fillStyle = npc.color;
+   378→        ctx!.beginPath();
+   379→        ctx!.arc(npcDef.x, npcDef.y, 18, 0, Math.PI * 2);
+   380→        ctx!.fill();
+   381→        ctx!.font = "24px sans-serif";
+   382→        ctx!.textAlign = "center";
+   383→        ctx!.textBaseline = "middle";
+   384→        ctx!.fillText(npc.emoji, npcDef.x, npcDef.y);
+   385→        // Name
+   386→        ctx!.font = "600 10px var(--font-geist-sans), sans-serif";
+   387→        ctx!.fillStyle = "#1f2937";
+   388→        ctx!.fillText(npc.name, npcDef.x, npcDef.y + 30);
+   389→
+   390→        // "Talk" indicator if player is close
+   391→        const dist = Math.sqrt((npcDef.x - playerPos.current.x) ** 2 + (npcDef.y - playerPos.current.y) ** 2);
+   392→        if (dist < 50) {
+   393→          ctx!.fillStyle = "#10b981";
+   394→          ctx!.font = "700 11px var(--font-geist-sans), sans-serif";
+   395→          const bob = Math.sin(animFrame.current * 0.1) * 2;
+   396→          ctx!.fillText("Press T to talk", npcDef.x, npcDef.y - 30 + bob);
+   397→        }
+   398→      }
+   399→
+   400→      // === Other players (remote) ===
+   401→      for (const p of players) {
+   402→        if (p.userId === user?.id) continue;
+   403→        const emote = activeEmotes.current.find((e) => e.userId === p.userId);
+   404→        renderAvatar({
+   405→          ctx: ctx!,
+   406→          x: p.x,
+   407→          y: p.y,
+   408→          size: 40,
+   409→          direction: p.direction,
+   410→          isMoving: p.isMoving,
+   411→          animFrame: animFrame.current,
+   412→          displayName: p.displayName,
+   413→          showName: true,
+   414→          config: p.avatarConfig,
+   415→          emote: emote ? emote.emoji : null,
+   416→        });
+   417→      }
+   418→
+   419→      // === Local player ===
+   420→      renderAvatar({
+   421→        ctx: ctx!,
+   422→        x: playerPos.current.x,
+   423→        y: playerPos.current.y,
+   424→        size: 40,
+   425→        direction: playerPos.current.direction,
+   426→        isMoving: playerPos.current.isMoving,
+   427→        animFrame: animFrame.current,
+   428→        displayName: user?.displayName,
+   429→        showName: true,
+   430→        isSelected: true,
+   431→        config: user?.avatarConfig ?? ({} as any),
+   432→      });
+   433→
+   434→      ctx!.restore();
+   435→
+   436→      rafId = requestAnimationFrame(tick);
+   437→    }
+   438→
+   439→    rafId = requestAnimationFrame(tick);
+   440→
+   441→    return () => {
+   442→      cancelAnimationFrame(rafId);
+   443→      window.removeEventListener("resize", resize);
+   444→    };
+   445→  }, [area, user?.id, players]);
+   446→
+   447→  // === Handle "T" to talk to NPC ===
+   448→  useEffect(() => {
+   449→    function onKey(e: KeyboardEvent) {
+   450→      if (e.key.toLowerCase() === "t" && !activeNPC) {
+   451→        // Find nearby NPC
+   452→        for (const npcDef of area.npcs) {
+   453→          const dist = Math.sqrt((npcDef.x - playerPos.current.x) ** 2 + (npcDef.y - playerPos.current.y) ** 2);
+   454→          if (dist < 50) {
+   455→            setActiveNPC(npcDef.slug);
+   456→            return;
+   457→          }
+   458→        }
+   459→      }
+   460→      if (e.key === "Escape") {
+   461→        setActiveNPC(null);
+   462→      }
+   463→    }
+   464→    window.addEventListener("keydown", onKey);
+   465→    return () => window.removeEventListener("keydown", onKey);
+   466→  }, [area, activeNPC]);
+   467→
+   468→  // === Handle area transition (called directly from game loop, no effect needed) ===
+   469→  const doAreaTransition = useCallback((targetSlug: string) => {
+   470→    const targetArea = getAreaBySlug(targetSlug);
+   471→    if (!targetArea) return;
+   472→    toast.info(`Entering ${targetArea.name}...`);
+   473→    changeArea(targetArea.slug, targetArea.spawnPoint.x, targetArea.spawnPoint.y);
+   474→    // Update local position via ref (mutation is intentional — playerPos is a high-frequency ref, not state)
+   475→    playerPos.current.x = targetArea.spawnPoint.x;
+   476→    playerPos.current.y = targetArea.spawnPoint.y;
+   477→  }, [changeArea]);
+   478→
+   479→  // Track last portal transition to debounce
+   480→  const lastTransitionAt = useRef(0);
+   481→
+   482→  function sendChatMessage() {
+   483→    if (!chatInput.trim()) return;
+   484→    // Brain Energy cost check
+   485→    if ((user?.brainEnergy ?? 0) < 1) {
+   486→      toast.error("Out of Brain Energy! Answer some math questions to chat.");
+   487→      return;
+   488→    }
+   489→    sendChat(chatInput);
+   490→    setChatInput("");
+   491→    // Deduct brain energy locally
+   492→    if (user) updateUser({ brainEnergy: Math.max(0, user.brainEnergy - 1) });
+   493→  }
+   494→
+   495→  if (!user) return null;
+   496→
+   497→  return (
+   498→    <div className={`relative w-full h-full ${dyslexiaFont ? "dyslexia-font" : ""}`}>
+   499→      {/* Top bar: area info, brain energy, players count */}
+   500→      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex items-center justify-between gap-2 pointer-events-none">
+   501→        <div className="flex items-center gap-2 pointer-events-auto">
+   502→          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl px-4 py-2 shadow-md border border-white/30 dark:border-white/10">
+   503→            <div className="flex items-center gap-2">
+   504→              <MapPin className="w-4 h-4 text-emerald-600" />
+   505→              <div>
+   506→                <div className="font-bold text-sm">{area.name}</div>
+   507→                <div className="text-xs text-muted-foreground">{area.description}</div>
+   508→              </div>
+   509→            </div>
+   510→          </div>
+   511→        </div>
+   512→
+   513→        <div className="flex items-center gap-2 pointer-events-auto">
+   514→          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl px-3 py-2 shadow-md border border-white/30 dark:border-white/10 flex items-center gap-2">
+   515→            <div className="w-2 h-2 rounded-full bg-emerald-500 mv-pulse-glow" />
+   516→            <span className="text-xs font-semibold">{connected ? "Online" : "Connecting..."}</span>
+   517→          </div>
+   518→          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl px-3 py-2 shadow-md border border-white/30 dark:border-white/10 flex items-center gap-2">
+   519→            <Users className="w-4 h-4 text-purple-600" />
+   520→            <span className="text-xs font-semibold">{players.length + 1}</span>
+   521→          </div>
+   522→          <div className="bg-gradient-to-r from-emerald-500 to-amber-500 rounded-xl px-3 py-2 shadow-md flex items-center gap-2">
+   523→            <Zap className="w-4 h-4 text-white" />
+   524→            <span className="text-xs font-bold text-white">{user.brainEnergy}/{user.maxBrainEnergy}</span>
+   525→          </div>
+   526→        </div>
+   527→      </div>
+   528→
+   529→      {/* Canvas */}
+   530→      <div ref={containerRef} className="absolute inset-0">
+   531→        <canvas ref={canvasRef} className="block mv-canvas" />
+   532→      </div>
+   533→
+   534→      {/* NPC Dialogue */}
+   535→      <AnimatePresence>
+   536→        {activeNPC && (
+   537→          <motion.div
+   538→            initial={{ opacity: 0, y: 30 }}
+   539→            animate={{ opacity: 1, y: 0 }}
+   540→            exit={{ opacity: 0, y: 30 }}
+   541→            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-4"
+   542→          >
+   543→            <Card className="p-4 shadow-2xl border-2 border-emerald-200 dark:border-emerald-800">
+   544→              <div className="flex items-start gap-3">
+   545→                <div className="text-4xl">{getNPCBySlug(activeNPC)?.emoji}</div>
+   546→                <div className="flex-1">
+   547→                  <div className="font-bold text-emerald-700 dark:text-emerald-400">{getNPCBySlug(activeNPC)?.name}</div>
+   548→                  <div className="text-sm mt-1">
+   549→                    {getNPCBySlug(activeNPC)?.dialogues[0]?.text}
+   550→                  </div>
+   551→                  <div className="flex gap-2 mt-3">
+   552→                    <Button size="sm" onClick={() => setActiveNPC(null)}>
+   553→                      <ChevronRight className="w-3 h-3 mr-1" /> Continue exploring
+   554→                    </Button>
+   555→                    <Button size="sm" variant="outline" onClick={() => setView("practice")}>
+   556→                      <Gamepad2 className="w-3 h-3 mr-1" /> Practice math
+   557→                    </Button>
+   558→                  </div>
+   559→                </div>
+   560→                <Button size="icon" variant="ghost" onClick={() => setActiveNPC(null)}>
+   561→                  <X className="w-4 h-4" />
+   562→                </Button>
+   563→              </div>
+   564→            </Card>
+   565→          </motion.div>
+   566→        )}
+   567→      </AnimatePresence>
+   568→
+   569→      {/* Chat panel */}
+   570→      <div className="absolute bottom-4 right-4 z-20 w-80 max-w-[calc(100vw-2rem)]">
+   571→        <Card className="overflow-hidden shadow-2xl border-2 border-white/40 dark:border-white/10">
+   572→          <button
+   573→            onClick={() => setShowChat(!showChat)}
+   574→            className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white"
+   575→          >
+   576→            <div className="flex items-center gap-2">
+   577→              <MessageCircle className="w-4 h-4" />
+   578→              <span className="font-bold text-sm">World Chat</span>
+   579→            </div>
+   580→            <div className="flex items-center gap-2">
+   581→              <span className="text-xs opacity-75">{messages.length}</span>
+   582→              {showChat ? <X className="w-3 h-3" /> : <ChevronRight className="w-3 h-3 rotate-90" />}
+   583→            </div>
+   584→          </button>
+   585→
+   586→          <AnimatePresence>
+   587→            {showChat && (
+   588→              <motion.div
+   589→                initial={{ height: 0 }}
+   590→                animate={{ height: "auto" }}
+   591→                exit={{ height: 0 }}
+   592→                className="overflow-hidden"
+   593→              >
+   594→                <ScrollArea className="h-48 p-3 mv-scroll">
+   595→                  {messages.length === 0 ? (
+   596→                    <p className="text-center text-xs text-muted-foreground py-4">
+   597→                      Say hi to other players! 👋
+   598→                    </p>
+   599→                  ) : (
+   600→                    <div className="space-y-2">
+   601→                      {messages.map((msg) => (
+   602→                        <div
+   603→                          key={msg.id}
+   604→                          className={`flex flex-col ${msg.isOwn ? "items-end" : "items-start"}`}
+   605→                        >
+   606→                          <div className={`max-w-[85%] rounded-lg px-3 py-1.5 text-sm ${
+   607→                            msg.moderationStatus === "BLOCKED"
+   608→                              ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 italic text-xs"
+   609→                              : msg.moderationStatus === "REWRITTEN"
+   610→                              ? "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
+   611→                              : msg.userId === "system"
+   612→                              ? "bg-muted text-muted-foreground text-xs italic"
+   613→                              : msg.isOwn
+   614→                              ? "bg-emerald-500 text-white"
+   615→                              : "bg-muted text-foreground"
+   616→                          }`}>
+   617→                            {msg.userId !== "system" && !msg.isOwn && (
+   618→                              <div className="font-semibold text-xs mb-0.5 opacity-75">{msg.displayName}</div>
+   619→                            )}
+   620→                            <div>{msg.content}</div>
+   621→                          </div>
+   622→                          <div className="text-[10px] text-muted-foreground mt-0.5">
+   623→                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+   624→                          </div>
+   625→                        </div>
+   626→                      ))}
+   627→                    </div>
+   628→                  )}
+   629→                </ScrollArea>
+   630→
+   631→                <div className="p-2 border-t flex gap-2">
+   632→                  <Input
+   633→                    value={chatInput}
+   634→                    onChange={(e) => setChatInput(e.target.value)}
+   635→                    onKeyDown={(e) => { if (e.key === "Enter") sendChatMessage(); }}
+   636→                    placeholder="Type a message..."
+   637→                    maxLength={280}
+   638→                    className="text-sm"
+   639→                  />
+   640→                  <Button size="icon" onClick={sendChatMessage} disabled={!chatInput.trim()}>
+   641→                    <Send className="w-4 h-4" />
+   642→                  </Button>
+   643→                </div>
+   644→              </motion.div>
+   645→            )}
+   646→          </AnimatePresence>
+   647→        </Card>
+   648→      </div>
+   649→
+   650→      {/* Emote bar */}
+   651→      <div className="absolute bottom-4 left-4 z-20 flex gap-2">
+   652→        {[
+   653→          { slug: "emote-wave", emoji: "👋", label: "Wave" },
+   654→          { slug: "emote-dance", emoji: "💃", label: "Dance" },
+   655→          { slug: "emote-cheer", emoji: "🎉", label: "Cheer" },
+   656→          { slug: "emote-thinking", emoji: "🤔", label: "Think" },
+   657→        ].map((e) => (
+   658→          <button
+   659→            key={e.slug}
+   660→            onClick={() => sendEmote(e.slug)}
+   661→            className="w-12 h-12 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-md border border-white/40 dark:border-white/10 flex items-center justify-center text-2xl hover:scale-110 transition-transform"
+   662→            title={e.label}
+   663→          >
+   664→            {e.emoji}
+   665→          </button>
+   666→        ))}
+   667→      </div>
+   668→
+   669→      {/* Mobile controls toggle */}
+   670→      <button
+   671→        onClick={() => setShowMobileControls(!showMobileControls)}
+   672→        className="lg:hidden absolute top-20 right-4 z-20 w-10 h-10 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md shadow-md flex items-center justify-center"
+   673→      >
+   674→        <Gamepad2 className="w-5 h-5" />
+   675→      </button>
+   676→
+   677→      {/* Mobile joystick */}
+   678→      <AnimatePresence>
+   679→        {showMobileControls && (
+   680→          <motion.div
+   681→            initial={{ opacity: 0 }}
+   682→            animate={{ opacity: 1 }}
+   683→            exit={{ opacity: 0 }}
+   684→            className="lg:hidden absolute bottom-24 left-4 z-20"
+   685→            onTouchStart={onTouchStart}
+   686→            onTouchMove={onTouchMove}
+   687→            onTouchEnd={onTouchEnd}
+   688→          >
+   689→            <div className="w-32 h-32 rounded-full bg-black/20 backdrop-blur-md relative flex items-center justify-center">
+   690→              <div className="w-16 h-16 rounded-full bg-white/80 shadow-md flex items-center justify-center"
+   691→                style={{
+   692→                  transform: `translate(${joystickOffset.dx * 0.3}px, ${joystickOffset.dy * 0.3}px)`,
+   693→                }}
+   694→              >
+   695→                <Gamepad2 className="w-6 h-6 text-emerald-600" />
+   696→              </div>
+   697→            </div>
+   698→          </motion.div>
+   699→        )}
+   700→      </AnimatePresence>
+   701→
+   702→      {/* Quick action: Go to Practice */}
+   703→      <div className="absolute top-20 left-4 z-20">
+   704→        <Button
+   705→          onClick={() => setView("practice")}
+   706→          className="bg-gradient-to-r from-emerald-500 to-amber-500 hover:opacity-90 shadow-lg"
+   707→          size="sm"
+   708→        >
+   709→          <Zap className="w-4 h-4 mr-1" /> Practice Math
+   710→        </Button>
+   711→      </div>
+   712→    </div>
+   713→  );
+   714→}
+   715→
