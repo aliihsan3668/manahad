@@ -913,9 +913,9 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
   const [coins, setCoins] = useState(0);
-  const [phase, setPhase] = useState<"play" | "results">("play");
+  const [phase, setPhase] = useState<"ready" | "play" | "results">("ready");
   const stateRef = useRef({
-    px: 100, py: 300, vy: 0, onGround: true, worldX: 0,
+    px: 100, py: 340, vy: 0, onGround: true, worldX: 0,
     coins: [] as { x: number; y: number; collected: boolean }[],
     enemies: [] as { x: number; y: number; dir: number }[],
     platforms: [] as { x: number; y: number; w: number; h: number }[],
@@ -934,17 +934,18 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
     s.platforms = [];
     s.coins = [];
     s.enemies = [];
-    // Ground segments with gaps
+    // First 10 segments have no gaps (safe start zone), then gap every 8th segment
     for (let i = 0; i < 100; i++) {
-      if (i % 5 !== 4) { // gap every 5th segment
+      const hasGap = i >= 10 && i % 8 === 7;
+      if (!hasGap) {
         s.platforms.push({ x: i * 100, y: 380, w: 100, h: 80 });
         // Coins above platforms
-        if (Math.random() > 0.3) s.coins.push({ x: i * 100 + 50, y: 300, collected: false });
-        // Enemies on some platforms
-        if (Math.random() > 0.7) s.enemies.push({ x: i * 100 + 50, y: 340, dir: 1 });
+        if (i >= 2 && Math.random() > 0.3) s.coins.push({ x: i * 100 + 50, y: 300, collected: false });
+        // Enemies on some platforms (not in first 5 segments = safe start)
+        if (i >= 5 && Math.random() > 0.7) s.enemies.push({ x: i * 100 + 50, y: 340, dir: 1 });
       }
-      // Floating platforms
-      if (i % 3 === 0 && i % 5 !== 4) {
+      // Floating platforms (not over gaps)
+      if (i >= 3 && i % 3 === 0 && !hasGap) {
         s.platforms.push({ x: i * 100 + 20, y: 280, w: 60, h: 20 });
         if (Math.random() > 0.5) s.coins.push({ x: i * 100 + 50, y: 240, collected: false });
       }
@@ -983,13 +984,18 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
       // Variable jump
       if (s.jumpHeld && s.vy < 0) s.vy += -0.3;
 
-      // Platform collision (landing on top)
+      // Platform collision (landing on top) — use full platform height to prevent tunneling
       s.onGround = false;
       for (const p of s.platforms) {
-        if (s.px + 30 > p.x && s.px < p.x + p.w && s.py + 40 >= p.y && s.py + 40 <= p.y + 20 && s.vy >= 0) {
-          s.py = p.y - 40;
-          s.vy = 0;
-          s.onGround = true;
+        if (s.px + 30 > p.x && s.px < p.x + p.w && s.vy >= 0) {
+          const prevBottom = s.py + 40 - s.vy; // where the bottom was last frame
+          const currBottom = s.py + 40;
+          // Check if player crossed the platform's top edge from above
+          if (prevBottom <= p.y && currBottom >= p.y) {
+            s.py = p.y - 40;
+            s.vy = 0;
+            s.onGround = true;
+          }
         }
       }
 
@@ -1002,7 +1008,7 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
           setPhase("results");
           return;
         }
-        s.py = 300;
+        s.py = 340; // respawn on ground level
         s.vy = 0;
         s.px = s.worldX + 100;
       }
@@ -1135,11 +1141,16 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase]);
 
-  // Jump controls
+  // Jump controls + start game
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
         e.preventDefault();
+        // Start game if in ready state
+        if (phase === "ready") {
+          setPhase("play");
+          return;
+        }
         const s = stateRef.current;
         if (s.onGround) {
           s.vy = -14;
@@ -1162,6 +1173,10 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
   }, []);
 
   function handleTap() {
+    if (phase === "ready") {
+      setPhase("play");
+      return;
+    }
     const s = stateRef.current;
     if (s.onGround) { s.vy = -14; s.onGround = false; s.jumpHeld = true; }
   }
@@ -1172,7 +1187,27 @@ function LeaperQuestGame({ onClose }: { onClose: (r: GameResult) => void }) {
 
   if (phase === "results") {
     const s = stateRef.current;
-    return <ResultsScreen score={s.score} correct={Math.floor(s.coinCount / 5)} total={Math.floor(s.coinCount / 5) + 1} onPlayAgain={() => { s.lives = 3; s.score = 0; s.coinCount = 0; s.px = 100; s.py = 300; s.vy = 0; s.worldX = 0; s.gameOver = false; setScore(0); setLives(3); setCoins(0); setPhase("play"); }} onClose={() => onClose({ score: s.score, xpEarned: Math.floor(s.score / 5), brainEnergyEarned: Math.floor(s.coinCount / 5) * 3, correct: Math.floor(s.coinCount / 5), total: Math.floor(s.coinCount / 5) + 1 })} />;
+    return <ResultsScreen score={s.score} correct={Math.floor(s.coinCount / 5)} total={Math.floor(s.coinCount / 5) + 1} onPlayAgain={() => { s.lives = 3; s.score = 0; s.coinCount = 0; s.px = 100; s.py = 340; s.vy = 0; s.worldX = 0; s.gameOver = false; s.frame = 0; setScore(0); setLives(3); setCoins(0); setPhase("ready"); }} onClose={() => onClose({ score: s.score, xpEarned: Math.floor(s.score / 5), brainEnergyEarned: Math.floor(s.coinCount / 5) * 3, correct: Math.floor(s.coinCount / 5), total: Math.floor(s.coinCount / 5) + 1 })} />;
+  }
+
+  if (phase === "ready") {
+    return (
+      <div className="p-6 flex flex-col items-center gap-4 min-h-[400px] justify-center">
+        <div className="text-6xl mb-4">🍄</div>
+        <h2 className="text-2xl font-bold">Leaper Quest</h2>
+        <p className="text-sm text-muted-foreground text-center max-w-xs">
+          Run, jump, collect coins 🪙, stomp enemies 👾, and answer math at checkpoints!
+        </p>
+        <Button
+          onClick={() => setPhase("play")}
+          size="lg"
+          className="rounded-full bg-gradient-to-r from-emerald-500 to-amber-500 px-8"
+        >
+          ▶ TAP TO START
+        </Button>
+        <p className="text-xs text-muted-foreground">Space / ↑ / Tap to jump · Hold for higher</p>
+      </div>
+    );
   }
 
   return (
