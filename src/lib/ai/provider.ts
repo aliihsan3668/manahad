@@ -274,7 +274,17 @@ export async function generateCompletion(
   req: AICompletionRequest
 ): Promise<AICompletionResponse> {
   const provider = getProvider();
-  return provider.complete(req);
+  try {
+    return await provider.complete(req);
+  } catch (err) {
+    // If the primary provider fails (e.g., 403 Forbidden, network error),
+    // fall back to ZAI (which always works, no API key needed)
+    if (provider.name !== "zai") {
+      console.warn(`[ai] Provider "${provider.name}" failed (${err instanceof Error ? err.message : "unknown"}). Falling back to "zai".`);
+      return await PROVIDERS.zai.complete(req);
+    }
+    throw err;
+  }
 }
 
 /**
