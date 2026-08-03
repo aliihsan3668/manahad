@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       topicSlug,
       difficulty: difficulty ?? 3,
       curriculumCode: curriculumCode ?? "COMMON-CORE",
-      useAI: useAI ?? true,
+      useAI: useAI ?? false, // Default to instant templates; UI can opt-in to AI
     });
 
     const question = await db.question.create({

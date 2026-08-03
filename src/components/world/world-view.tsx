@@ -115,7 +115,7 @@ export function WorldView() {
   const activeEmotes = useRef<ActiveEmote[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [showChat, setShowChat] = useState(true);
-  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [showMobileControls, setShowMobileControls] = useState(true);
   const [activeNPC, setActiveNPC] = useState<string | null>(null);
 
   // === Collectibles: track respawn timestamps ===
@@ -540,31 +540,57 @@ export function WorldView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [area, activeNPC, mathQuestion, showTeleportMenu, triggerInteractable, sendEmote]);
 
-  // === Touch joystick ===
+  // === Touch/Mouse joystick (works on desktop AND mobile) ===
   const joystickRef = useRef<{ active: boolean; dx: number; dy: number }>({ active: false, dx: 0, dy: 0 });
   const [joystickOffset, setJoystickOffset] = useState({ dx: 0, dy: 0 });
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const touch = e.touches[0];
+  const joystickActiveRef = useRef(false);
+
+  const handleJoystickStart = useCallback((clientX: number, clientY: number) => {
+    const el = document.querySelector("[data-joystick]") as HTMLElement;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    joystickActiveRef.current = true;
     joystickRef.current = {
       active: true,
-      dx: touch.clientX - (rect.left + rect.width / 2),
-      dy: touch.clientY - (rect.top + rect.height / 2),
+      dx: clientX - (rect.left + rect.width / 2),
+      dy: clientY - (rect.top + rect.height / 2),
     };
     setJoystickOffset({ dx: joystickRef.current.dx, dy: joystickRef.current.dy });
   }, []);
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!joystickRef.current.active) return;
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const touch = e.touches[0];
-    joystickRef.current.dx = touch.clientX - (rect.left + rect.width / 2);
-    joystickRef.current.dy = touch.clientY - (rect.top + rect.height / 2);
+
+  const handleJoystickMove = useCallback((clientX: number, clientY: number) => {
+    if (!joystickActiveRef.current) return;
+    const el = document.querySelector("[data-joystick]") as HTMLElement;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    joystickRef.current.dx = clientX - (rect.left + rect.width / 2);
+    joystickRef.current.dy = clientY - (rect.top + rect.height / 2);
     setJoystickOffset({ dx: joystickRef.current.dx, dy: joystickRef.current.dy });
   }, []);
-  const onTouchEnd = useCallback(() => {
+
+  const handleJoystickEnd = useCallback(() => {
+    joystickActiveRef.current = false;
     joystickRef.current = { active: false, dx: 0, dy: 0 };
     setJoystickOffset({ dx: 0, dy: 0 });
   }, []);
+
+  // Global mouse listeners (so dragging outside joystick works)
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) { if (joystickActiveRef.current) handleJoystickMove(e.clientX, e.clientY); }
+    function onMouseUp() { if (joystickActiveRef.current) handleJoystickEnd(); }
+    function onTouchMove(e: TouchEvent) { if (joystickActiveRef.current && e.touches[0]) handleJoystickMove(e.touches[0].clientX, e.touches[0].clientY); }
+    function onTouchEnd() { if (joystickActiveRef.current) handleJoystickEnd(); }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [handleJoystickMove, handleJoystickEnd]);
 
   // === Main game loop ===
   useEffect(() => {
@@ -1483,25 +1509,20 @@ export function WorldView() {
       {/* Mobile joystick */}
       <AnimatePresence>
         {showMobileControls && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="lg:hidden absolute bottom-24 left-4 z-20"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
+          <div
+            data-joystick
+            className="absolute bottom-24 left-4 z-20 touch-none cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={(e) => { e.preventDefault(); handleJoystickStart(e.clientX, e.clientY); }}
+            onTouchStart={(e) => { const t = e.touches[0]; handleJoystickStart(t.clientX, t.clientY); }}
           >
-            <div className="w-32 h-32 rounded-full bg-black/20 backdrop-blur-md relative flex items-center justify-center">
-              <div className="w-16 h-16 rounded-full bg-white/80 shadow-md flex items-center justify-center"
-                style={{
-                  transform: `translate(${joystickOffset.dx * 0.3}px, ${joystickOffset.dy * 0.3}px)`,
-                }}
+            <div className="w-28 h-28 rounded-full bg-black/25 backdrop-blur-md relative flex items-center justify-center">
+              <div className="w-14 h-14 rounded-full bg-white/80 shadow-md flex items-center justify-center pointer-events-none"
+                style={{ transform: `translate(${joystickOffset.dx * 0.3}px, ${joystickOffset.dy * 0.3}px)` }}
               >
                 <Gamepad2 className="w-6 h-6 text-emerald-600" />
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

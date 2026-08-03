@@ -114,7 +114,7 @@ export function PracticeView() {
           topicSlug: slug,
           difficulty: mode === "CHALLENGE" ? Math.min(5, difficulty + 1) : difficulty,
           curriculumCode: curriculum,
-          useAI: true,
+          useAI: false,
         }),
       });
       const data = await res.json();

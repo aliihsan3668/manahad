@@ -113,19 +113,43 @@ export function MiniGamesMenu({ onClose }: MiniGamesMenuProps) {
 // ============================================================
 
 function GameWrapper({ game, onClose }: { game: GameId; onClose: (r: GameResult) => void }) {
-  switch (game) {
-    case "math-race": return <MathRaceGame onClose={onClose} />;
-    case "number-ninja": return <NumberNinjaGame onClose={onClose} />;
-    case "treasure-hunt": return <TreasureHuntGame onClose={onClose} />;
-    case "brain-puzzle": return <BrainPuzzleGame onClose={onClose} />;
-    case "math-battle": return <MathBattleGame onClose={onClose} />;
-    case "tower-siege": return <TowerSiegeGame onClose={onClose} />;
-    case "pattern-master": return <PatternMasterGame onClose={onClose} />;
-    case "math-memory": return <MathMemoryGame onClose={onClose} />;
-    case "boss-battle": return <BossBattleGame onClose={onClose} />;
-    case "leaper-quest": return <LeaperQuestGame onClose={onClose} />;
-    default: return <MathRaceGame onClose={onClose} />;
-  }
+  const gameContent = (() => {
+    switch (game) {
+      case "math-race": return <MathRaceGame onClose={onClose} />;
+      case "number-ninja": return <NumberNinjaGame onClose={onClose} />;
+      case "treasure-hunt": return <TreasureHuntGame onClose={onClose} />;
+      case "brain-puzzle": return <BrainPuzzleGame onClose={onClose} />;
+      case "math-battle": return <MathBattleGame onClose={onClose} />;
+      case "tower-siege": return <TowerSiegeGame onClose={onClose} />;
+      case "pattern-master": return <PatternMasterGame onClose={onClose} />;
+      case "math-memory": return <MathMemoryGame onClose={onClose} />;
+      case "boss-battle": return <BossBattleGame onClose={onClose} />;
+      case "leaper-quest": return <LeaperQuestGame onClose={onClose} />;
+      default: return <MathRaceGame onClose={onClose} />;
+    }
+  })();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 bg-white dark:bg-slate-900 overflow-y-auto"
+    >
+      <div className="sticky top-0 bg-gradient-to-r from-purple-500 to-rose-500 text-white p-3 flex items-center justify-between z-10">
+        <h2 className="text-lg font-bold">{ALL_GAMES.find(g => g.id === game)?.emoji} {ALL_GAMES.find(g => g.id === game)?.label}</h2>
+        <button
+          onClick={() => onClose({ score: 0, xpEarned: 0, brainEnergyEarned: 0, correct: 0, total: 0 })}
+          className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center active:scale-90"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="max-w-2xl mx-auto">
+        {gameContent}
+      </div>
+    </motion.div>
+  );
 }
 
 // ============================================================
