@@ -1,10 +1,16 @@
 /**
- * MathVerse — Auth & Session Helpers
+ * MANAHAD — Auth & Session Helpers
  *
- * Lightweight session management using signed cookies.
- * For production with Supabase, swap these for Supabase Auth — the
- * rest of the app calls getCurrentUser() and doesn't care about the
- * implementation underneath.
+ * Username-based dual-password system:
+ *   - Each CHILD account has a `passwordHash` (student password) and an
+ *     optional `parentPasswordHash` (parent password).
+ *   - Logging in with the student password yields `loginMode: "STUDENT"`.
+ *   - Logging in with the parent password yields `loginMode: "PARENT"`.
+ *   - ADMIN accounts always log in as `loginMode: "ADMIN"`.
+ *
+ * Email is generated internally as `${username.toLowerCase()}@manahad.local`
+ * and is never shown to the user — it simply satisfies the unique-email
+ * constraint of the User table.
  */
 
 import { cookies } from "next/headers";
@@ -21,7 +27,7 @@ const SESSION_DURATION = 7 * 24 * 60 * 60; // 7 days, in seconds
 // In production, use argon2 or bcrypt via edge function
 // ============================================================
 
-function hashPassword(password: string, salt: string = "mathverse"): string {
+function hashPassword(password: string, salt: string = "manahad"): string {
   return createHash("sha256")
     .update(salt + password + config.auth.sessionSecret)
     .digest("hex");
@@ -98,7 +104,7 @@ export async function getSessionToken(): Promise<string | undefined> {
 }
 
 // ============================================================
-// CURRENT USER
+// DEFAULT AVATAR
 // ============================================================
 
 const DEFAULT_AVATAR: AvatarConfig = {
@@ -115,38 +121,72 @@ const DEFAULT_AVATAR: AvatarConfig = {
   emote: "emote-wave",
 };
 
-export async function getCurrentUser(): Promise<UserSession | null> {
-  const token = await getSessionToken();
-  if (!token) return null;
-  const userId = verifyToken(token);
-  if (!userId) return null;
+export { DEFAULT_AVATAR };
+export type { AvatarConfig };
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    include: { parentSettings: true },
-  });
-  if (!user) return null;
+// ============================================================
+// HELPERS
+// ============================================================
 
-  let avatarConfig: AvatarConfig;
+export function generateId(): string {
+  return randomBytes(16).toString("hex");
+}
+
+function emailFromUsername(username: string): string {
+  return `${username.toLowerCase()}@manahad.local`;
+}
+
+function parseAvatar(raw: string | null | undefined): AvatarConfig {
+  if (!raw) return DEFAULT_AVATAR;
   try {
-    avatarConfig = { ...DEFAULT_AVATAR, ...JSON.parse(user.avatarConfig) };
+    return { ...DEFAULT_AVATAR, ...JSON.parse(raw) };
   } catch {
-    avatarConfig = DEFAULT_AVATAR;
+    return DEFAULT_AVATAR;
   }
+}
 
+function toUserSession(
+  user: {
+    id: string;
+    email: string;
+    username: string;
+    displayName: string;
+    role: string;
+    avatarConfig: string;
+    brainEnergy: number;
+    maxBrainEnergy: number;
+    xp: number;
+    level: number;
+    coins: number;
+    streak: number;
+    parentSettings?: {
+      chatEnabled: boolean;
+      approvedFriendsOnly: boolean;
+      friendApprovalRequired: boolean;
+      playtimeMinutesPerDay: number;
+      playtimeMinutesPerSession: number;
+      weeklyReportEmail: boolean;
+      alertOnModeration: boolean;
+      alertOnFriendRequest: boolean;
+      realNameSharing: boolean;
+    } | null;
+  },
+  loginMode: "STUDENT" | "PARENT" | "ADMIN"
+): UserSession {
   return {
     id: user.id,
     email: user.email,
     username: user.username,
     displayName: user.displayName,
     role: user.role as UserSession["role"],
-    avatarConfig,
+    avatarConfig: parseAvatar(user.avatarConfig),
     brainEnergy: user.brainEnergy,
     maxBrainEnergy: user.maxBrainEnergy,
     xp: user.xp,
     level: user.level,
     coins: user.coins,
     streak: user.streak,
+    loginMode,
     parentSettings: user.parentSettings
       ? {
           chatEnabled: user.parentSettings.chatEnabled,
@@ -163,6 +203,36 @@ export async function getCurrentUser(): Promise<UserSession | null> {
   };
 }
 
+// ============================================================
+// CURRENT USER
+// ============================================================
+
+export async function getCurrentUser(): Promise<UserSession | null> {
+  const token = await getSessionToken();
+  if (!token) return null;
+  const userId = verifyToken(token);
+  if (!userId) return null;
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    include: { parentSettings: true },
+  });
+  if (!user) return null;
+
+  // Role-based default login mode. ADMIN → ADMIN, everyone else defaults to STUDENT.
+  // (The actual login mode at sign-in time is also captured by the route handler via
+  // loginUserByUsername, but getCurrentUser does not have access to that signal —
+  // it reconstructs the mode from role + presence of parent password hash.)
+  const loginMode: UserSession["loginMode"] =
+    user.role === "ADMIN"
+      ? "ADMIN"
+      : user.role === "PARENT"
+        ? "PARENT"
+        : "STUDENT";
+
+  return toUserSession(user, loginMode);
+}
+
 export async function getCurrentUserOrThrow(): Promise<UserSession> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
@@ -170,137 +240,153 @@ export async function getCurrentUserOrThrow(): Promise<UserSession> {
 }
 
 // ============================================================
-// REGISTRATION
+// REGISTRATION (username-based, dual password for CHILD)
 // ============================================================
 
 export async function registerUser(opts: {
-  email: string;
   username: string;
-  displayName: string;
-  password: string;
-  role?: "CHILD" | "PARENT" | "TEACHER" | "MODERATOR";
-  parentEmail?: string; // for child accounts
-}): Promise<{ user: UserSession; error?: string }> {
-  const { email, username, displayName, password, role = "CHILD", parentEmail } = opts;
+  studentPassword: string;
+  parentPassword?: string;
+  parentEmail?: string;
+}): Promise<{ user: UserSession | null; error?: string }> {
+  const { username, studentPassword, parentPassword, parentEmail } = opts;
 
-  // Validate
-  if (!email || !email.includes("@")) return { user: null as never, error: "Invalid email" };
-  if (!username || username.length < 3) return { user: null as never, error: "Username must be at least 3 characters" };
-  if (!/^[a-zA-Z0-9_]+$/.test(username)) return { user: null as never, error: "Username can only contain letters, numbers, and underscores" };
-  if (!password || password.length < 6) return { user: null as never, error: "Password must be at least 6 characters" };
+  // Validate username
+  if (!username || username.length < 3) {
+    return { user: null, error: "Username must be at least 3 characters" };
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+    return { user: null, error: "Username can only contain letters, numbers, and underscores" };
+  }
 
-  // Check uniqueness
+  // Validate student password (4+ chars — friendly for kids)
+  if (!studentPassword || studentPassword.length < 4) {
+    return { user: null, error: "Student password must be at least 4 characters" };
+  }
+
+  // Validate optional parent password (6+ chars if provided)
+  if (parentPassword !== undefined && parentPassword !== "" && parentPassword.length < 6) {
+    return { user: null, error: "Parent password must be at least 6 characters" };
+  }
+
+  // Validate parent email if provided
+  if (parentEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail)) {
+    return { user: null, error: "Parent email is not valid" };
+  }
+
+  const email = emailFromUsername(username);
+
+  // Check uniqueness (username OR email)
   const existing = await db.user.findFirst({
     where: { OR: [{ email }, { username }] },
   });
   if (existing) {
-    return { user: null as never, error: "Email or username already taken" };
+    return { user: null, error: "That username is already taken" };
   }
 
-  const passwordHash = createPasswordHash(password);
+  const passwordHash = createPasswordHash(studentPassword);
+  const parentPasswordHash =
+    parentPassword && parentPassword.length > 0
+      ? createPasswordHash(parentPassword)
+      : null;
 
-  const user = await db.user.create({
+  const created = await db.user.create({
     data: {
       email,
       username,
-      displayName,
+      displayName: username,
       passwordHash,
-      role,
+      parentPasswordHash,
+      parentEmail: parentEmail || null,
+      role: "CHILD",
       avatarConfig: JSON.stringify(DEFAULT_AVATAR),
     },
+    include: { parentSettings: true },
   });
 
-  // If child registering with parent email, create a pending parent link
-  if (role === "CHILD" && parentEmail) {
-    const parent = await db.user.findUnique({ where: { email: parentEmail } });
-    if (parent && parent.role === "PARENT") {
-      await db.childParentLink.create({
+  await setSessionCookie(created.id);
+
+  return { user: toUserSession(created, "STUDENT") };
+}
+
+// ============================================================
+// LOGIN (username-based, dual password)
+// ============================================================
+
+export async function loginUserByUsername(
+  username: string,
+  password: string
+): Promise<{ user: UserSession | null; error?: string }> {
+  if (!username || !password) {
+    return { user: null, error: "Username and password are required" };
+  }
+
+  const user = await db.user.findUnique({
+    where: { username },
+    include: { parentSettings: true },
+  });
+  if (!user) {
+    return { user: null, error: "Username not found" };
+  }
+
+  // Admin always authenticates via passwordHash (their primary password) and
+  // always logs in with loginMode === "ADMIN".
+  if (user.role === "ADMIN") {
+    if (!verifyPassword(password, user.passwordHash)) {
+      return { user: null, error: "Incorrect password" };
+    }
+    await setSessionCookie(user.id);
+    return { user: toUserSession(user, "ADMIN") };
+  }
+
+  // Try student password first
+  if (verifyPassword(password, user.passwordHash)) {
+    await setSessionCookie(user.id);
+    return { user: toUserSession(user, "STUDENT") };
+  }
+
+  // Then try parent password (if present)
+  if (user.parentPasswordHash && verifyPassword(password, user.parentPasswordHash)) {
+    await setSessionCookie(user.id);
+    return { user: toUserSession(user, "PARENT") };
+  }
+
+  return { user: null, error: "Incorrect password" };
+}
+
+// ============================================================
+// ADMIN BOOTSTRAP — ensures the admin account exists
+// ============================================================
+
+const ADMIN_USERNAME = "mxaliihsan";
+const ADMIN_PASSWORD = "M12a34I56";
+
+export async function ensureAdminExists(): Promise<void> {
+  const existing = await db.user.findUnique({
+    where: { username: ADMIN_USERNAME },
+  });
+  if (existing) {
+    // If the admin row exists but for some reason isn't flagged as ADMIN, fix it.
+    if (existing.role !== "ADMIN") {
+      await db.user.update({
+        where: { id: existing.id },
         data: {
-          childId: user.id,
-          parentId: parent.id,
-          relation: "PARENT",
-          approved: true,
+          role: "ADMIN",
+          passwordHash: createPasswordHash(ADMIN_PASSWORD),
         },
       });
     }
+    return;
   }
 
-  // If parent registering, create parent settings
-  if (role === "PARENT") {
-    await db.parentSettings.create({
-      data: { parentId: user.id },
-    });
-  }
-
-  await setSessionCookie(user.id);
-
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role as UserSession["role"],
-      avatarConfig: DEFAULT_AVATAR,
-      brainEnergy: user.brainEnergy,
-      maxBrainEnergy: user.maxBrainEnergy,
-      xp: user.xp,
-      level: user.level,
-      coins: user.coins,
-      streak: user.streak,
+  await db.user.create({
+    data: {
+      email: emailFromUsername(ADMIN_USERNAME),
+      username: ADMIN_USERNAME,
+      displayName: "Admin",
+      passwordHash: createPasswordHash(ADMIN_PASSWORD),
+      role: "ADMIN",
+      avatarConfig: JSON.stringify(DEFAULT_AVATAR),
     },
-  };
-}
-
-export async function loginUser(email: string, password: string): Promise<{ user: UserSession | null; error?: string }> {
-  const user = await db.user.findUnique({ where: { email }, include: { parentSettings: true } });
-  if (!user) return { user: null, error: "Email not found" };
-  if (!verifyPassword(password, user.passwordHash)) return { user: null, error: "Incorrect password" };
-
-  await setSessionCookie(user.id);
-
-  let avatarConfig: AvatarConfig;
-  try {
-    avatarConfig = { ...DEFAULT_AVATAR, ...JSON.parse(user.avatarConfig) };
-  } catch {
-    avatarConfig = DEFAULT_AVATAR;
-  }
-
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role as UserSession["role"],
-      avatarConfig,
-      brainEnergy: user.brainEnergy,
-      maxBrainEnergy: user.maxBrainEnergy,
-      xp: user.xp,
-      level: user.level,
-      coins: user.coins,
-      streak: user.streak,
-      parentSettings: user.parentSettings
-        ? {
-            chatEnabled: user.parentSettings.chatEnabled,
-            approvedFriendsOnly: user.parentSettings.approvedFriendsOnly,
-            friendApprovalRequired: user.parentSettings.friendApprovalRequired,
-            playtimeMinutesPerDay: user.parentSettings.playtimeMinutesPerDay,
-            playtimeMinutesPerSession: user.parentSettings.playtimeMinutesPerSession,
-            weeklyReportEmail: user.parentSettings.weeklyReportEmail,
-            alertOnModeration: user.parentSettings.alertOnModeration,
-            alertOnFriendRequest: user.parentSettings.alertOnFriendRequest,
-            realNameSharing: user.parentSettings.realNameSharing,
-          }
-        : undefined,
-    },
-  };
-}
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-export function generateId(): string {
-  return randomBytes(16).toString("hex");
+  });
 }

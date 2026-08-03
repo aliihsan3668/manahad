@@ -21,14 +21,26 @@ const lexend = Lexend({
 });
 
 export const metadata: Metadata = {
-  title: "MathVerse — Where Math Meets Magic",
-  description: "A multiplayer math learning world for children aged 8-13. Play with friends, complete quests, master mathematics — all disguised as adventure.",
-  keywords: ["MathVerse", "math", "learning", "multiplayer", "education", "children", "game"],
-  authors: [{ name: "MathVerse Team" }],
+  title: "MANAHAD — Where Math Meets Magic",
+  description: "A multiplayer math learning world for children aged 8-13.",
+  keywords: ["MANAHAD", "math", "learning", "multiplayer", "education", "children", "game"],
+  authors: [{ name: "MANAHAD Team" }],
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: ["/favicon.svg"],
+  },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "MANAHAD" },
   openGraph: {
-    title: "MathVerse — Where Math Meets Magic",
+    title: "MANAHAD — Where Math Meets Magic",
     description: "A multiplayer math learning world for children. Play with friends, master mathematics.",
-    siteName: "MathVerse",
+    siteName: "MANAHAD",
     type: "website",
   },
 };

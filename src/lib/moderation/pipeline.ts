@@ -1,5 +1,5 @@
 /**
- * MathVerse — Child Safety Moderation Pipeline
+ * MANAHAD — Child Safety Moderation Pipeline
  *
  * Every chat message passes through this pipeline BEFORE being broadcast to other players:
  *
@@ -318,7 +318,7 @@ export function runRuleBasedModeration(content: string): {
 // AI MODERATION
 // ============================================================
 
-const AI_MODERATION_SYSTEM_PROMPT = `You are a child safety moderation AI for MathVerse, a multiplayer math game for children aged 8-13.
+const AI_MODERATION_SYSTEM_PROMPT = `You are a child safety moderation AI for MANAHAD, a multiplayer math game for children aged 8-13.
 
 Analyze the following chat message and return a JSON object with these fields:
 {

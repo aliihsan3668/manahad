@@ -1,5 +1,5 @@
 /**
- * MathVerse — Realtime Multiplayer Service
+ * MANAHAD — Realtime Multiplayer Service
  *
  * Port: 3003
  *
@@ -464,7 +464,7 @@ setInterval(() => {
 
 const PORT = 3003;
 httpServer.listen(PORT, () => {
-  console.log(`[MathVerse Realtime] WebSocket server running on port ${PORT}`);
+  console.log(`[MANAHAD Realtime] WebSocket server running on port ${PORT}`);
 });
 
 process.on("SIGTERM", () => {

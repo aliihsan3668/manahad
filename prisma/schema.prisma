@@ -22,6 +22,8 @@ model User {
   username      String   @unique
   displayName   String
   passwordHash  String
+  parentPasswordHash String? // For student accounts: parent's separate password
+  parentEmail   String?  // Optional parent email for student accounts
   role          String   @default("CHILD") // CHILD | PARENT | TEACHER | MODERATOR | ADMIN
   avatarConfig  String   @default("{}") // JSON: skinTone, hair, hat, outfit, accessory, pet, trail
   brainEnergy   Int      @default(100)

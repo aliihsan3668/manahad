@@ -1,5 +1,5 @@
 /**
- * MathVerse — Global UI Store (Zustand)
+ * MANAHAD — Global UI Store (Zustand)
  *
  * Tracks:
  *   - Current user session

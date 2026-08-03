@@ -1,5 +1,5 @@
 /**
- * MathVerse — Deterministic Math Grading Engine
+ * MANAHAD — Deterministic Math Grading Engine
  *
  * Determines whether a student's answer is mathematically equivalent to
  * the correct answer WITHOUT relying on AI (which is slow + expensive + non-deterministic).

@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+db
+download
+skills
+examples
+tests
+agent-ctx
+worklog.md
+dev.log
+server.log
+*.db
+.env

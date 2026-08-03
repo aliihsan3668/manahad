@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — App Shell
+ * MANAHAD — App Shell
  *
  * Wraps every authenticated view with:
  *   - Top bar: logo, brain energy, level/XP, coins, notifications, user menu
@@ -53,7 +53,7 @@ interface NavItem {
   view: AppView;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: string[]; // if specified, only show for these roles
+  loginModes?: Array<"STUDENT" | "PARENT" | "ADMIN">; // if specified, only show for these login modes
   description: string;
 }
 
@@ -64,8 +64,8 @@ const NAV_ITEMS: NavItem[] = [
   { view: "quests", label: "Quests", icon: Sparkles, description: "Daily & weekly challenges" },
   { view: "avatar", label: "Avatar", icon: User, description: "Customize your look" },
   { view: "leaderboard", label: "Leaderboard", icon: Crown, description: "Top players" },
-  { view: "parent", label: "Parent Dashboard", icon: Shield, roles: ["PARENT"], description: "Monitor your children" },
-  { view: "moderator", label: "Moderation", icon: Users, roles: ["MODERATOR", "ADMIN"], description: "Review reports" },
+  { view: "parent", label: "Parent Dashboard", icon: Shield, loginModes: ["PARENT"], description: "Monitor your children" },
+  { view: "moderator", label: "Admin Dashboard", icon: Users, loginModes: ["ADMIN"], description: "Manage users & platform" },
 ];
 
 export function AppShell() {
@@ -93,8 +93,11 @@ export function AppShell() {
     return <AuthView />;
   }
 
+  // Determine loginMode (default STUDENT for legacy sessions without it).
+  const loginMode = user.loginMode ?? "STUDENT";
+
   const filteredNav = NAV_ITEMS.filter(
-    (item) => !item.roles || item.roles.includes(user.role)
+    (item) => !item.loginModes || item.loginModes.includes(loginMode)
   );
 
   // Level progress calculation
@@ -125,8 +128,8 @@ export function AppShell() {
       case "progress": return <ProgressView />;
       case "quests": return <QuestsView />;
       case "leaderboard": return <LeaderboardView />;
-      case "parent": return user.role === "PARENT" ? <ParentView /> : <AccessDenied />;
-      case "moderator": return (user.role === "MODERATOR" || user.role === "ADMIN") ? <ModeratorView /> : <AccessDenied />;
+      case "parent": return loginMode === "PARENT" ? <ParentView /> : <AccessDenied />;
+      case "moderator": return loginMode === "ADMIN" ? <ModeratorView /> : <AccessDenied />;
       default: return <WorldView />;
     }
   }
@@ -153,7 +156,7 @@ export function AppShell() {
                   items={filteredNav}
                   activeView={view}
                   onSelect={(v) => { setView(v); setMobileNavOpen(false); }}
-                  user={user}
+                  user={{ ...user, loginMode }}
                 />
               </SheetContent>
             </Sheet>
@@ -167,7 +170,7 @@ export function AppShell() {
               </div>
               <div className="hidden sm:block text-left">
                 <div className="font-extrabold text-base leading-tight bg-gradient-to-r from-emerald-600 to-amber-600 bg-clip-text text-transparent">
-                  MathVerse
+                  MANAHAD
                 </div>
                 <div className="text-[10px] text-muted-foreground leading-tight">Where math meets magic</div>
               </div>
@@ -271,7 +274,11 @@ export function AppShell() {
                 <DropdownMenuLabel className="flex flex-col gap-0.5">
                   <span>{user.displayName}</span>
                   <span className="text-xs text-muted-foreground font-normal">@{user.username}</span>
-                  <Badge variant="secondary" className="w-fit mt-1 text-[10px]">{user.role}</Badge>
+                  <Badge variant="secondary" className="w-fit mt-1 text-[10px]">
+                    {loginMode === "ADMIN" ? "🔒 Admin"
+                      : loginMode === "PARENT" ? "👨‍👩‍👧 Parent"
+                      : "🧒 Student"}
+                  </Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
@@ -329,7 +336,7 @@ export function AppShell() {
             items={filteredNav}
             activeView={view}
             onSelect={setView}
-            user={user}
+            user={{ ...user, loginMode }}
           />
         </aside>
 
@@ -347,6 +354,9 @@ export function AppShell() {
               {renderView()}
             </motion.div>
           </AnimatePresence>
+
+          {/* The WhoOnlinePanel is now rendered inside <WorldView /> so it
+              can coordinate position with the chat panel + mobile joystick. */}
         </main>
       </div>
 
@@ -393,8 +403,12 @@ function SidebarContent({
   items: NavItem[];
   activeView: AppView;
   onSelect: (v: AppView) => void;
-  user: { displayName: string; username: string; role: string; level: number; xp: number };
+  user: { displayName: string; username: string; loginMode: "STUDENT" | "PARENT" | "ADMIN"; level: number; xp: number };
 }) {
+  const modeBadge =
+    user.loginMode === "ADMIN" ? "🔒 Admin"
+      : user.loginMode === "PARENT" ? "👨‍👩‍👧 Parent"
+      : "🧒 Student";
   return (
     <div className="flex flex-col h-full">
       {/* User card at top */}
@@ -407,7 +421,9 @@ function SidebarContent({
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm truncate">{user.displayName}</div>
-            <div className="text-xs text-muted-foreground truncate">Lv {user.level} · {user.xp} XP</div>
+            <div className="text-xs text-muted-foreground truncate">
+              {modeBadge} · Lv {user.level} · {user.xp} XP
+            </div>
           </div>
         </div>
       </div>
@@ -443,7 +459,7 @@ function SidebarContent({
       {/* Footer */}
       <div className="p-3 border-t border-sidebar-border">
         <div className="text-[10px] text-muted-foreground text-center">
-          MathVerse v1.0 · Child-safe ✨
+          MANAHAD v1.0 · Child-safe ✨
         </div>
       </div>
     </div>

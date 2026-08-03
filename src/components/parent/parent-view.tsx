@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Parent Dashboard
+ * MANAHAD — Parent Dashboard
  *
  * Auth-gated (role PARENT/ADMIN). For each linked child shows:
  *   - Avatar + name + level + XP

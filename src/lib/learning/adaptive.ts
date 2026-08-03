@@ -1,5 +1,5 @@
 /**
- * MathVerse — Adaptive Learning Engine
+ * MANAHAD — Adaptive Learning Engine
  */
 
 import type { MasteryDTO } from "@/lib/types";

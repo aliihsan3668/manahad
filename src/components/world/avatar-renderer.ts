@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Avatar Renderer
+ * MANAHAD — Avatar Renderer
  *
  * Renders an avatar (player or NPC) using simple shapes on a canvas context.
  * The avatar is composed of:
@@ -320,7 +320,7 @@ export function renderAvatar(opts: RenderOpts) {
 
   // === Display name ===
   if (opts.showName && opts.displayName) {
-    ctx.font = "600 11px var(--font-geist-sans), sans-serif";
+    ctx.font = "500 9px var(--font-geist-sans), sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     const nameY = -size * 0.55;

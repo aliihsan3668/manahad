@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Progress Dashboard
+ * MANAHAD — Progress Dashboard
  *
  * Hero card with level / XP / streak / brain energy.
  * Stats grid (answered, accuracy, avg speed, time spent).

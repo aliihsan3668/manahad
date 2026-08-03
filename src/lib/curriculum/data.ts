@@ -1,5 +1,5 @@
 /**
- * MathVerse — Curriculum Data
+ * MANAHAD — Curriculum Data
  *
  * Multi-curriculum, multi-grade topic tree.
  * Each topic includes:

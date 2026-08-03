@@ -1,5 +1,5 @@
 /**
- * MathVerse — Achievements & Quests Definitions
+ * MANAHAD — Achievements & Quests Definitions
  */
 
 export interface AchievementDef {

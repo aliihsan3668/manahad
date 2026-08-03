@@ -1,5 +1,5 @@
 /**
- * MathVerse — Database Seed Script
+ * MANAHAD — Database Seed Script
  *
  * Seeds:
  *   - 5 curricula (Pakistan, Cambridge, IB, Common Core, CBSE)
@@ -23,7 +23,7 @@ import { createPasswordHash } from "../src/lib/auth/session";
 const db = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Seeding MathVerse database...");
+  console.log("🌱 Seeding MANAHAD database...");
 
   // ===== CURRICULA & GRADES & TOPICS =====
   for (const c of CURRICULA) {
@@ -195,9 +195,9 @@ async function main() {
   const passwordHash = createPasswordHash("password123");
 
   const parent = await db.user.upsert({
-    where: { email: "parent@mathverse.demo" },
+    where: { email: "parent@manahad.demo" },
     create: {
-      email: "parent@mathverse.demo",
+      email: "parent@manahad.demo",
       username: "parent_demo",
       displayName: "Demo Parent",
       passwordHash,
@@ -212,9 +212,9 @@ async function main() {
   });
 
   const childNames = [
-    { email: "alex@mathverse.demo", username: "alex_kid", displayName: "Alex" },
-    { email: "mia@mathverse.demo", username: "mia_kid", displayName: "Mia" },
-    { email: "zain@mathverse.demo", username: "zain_kid", displayName: "Zain" },
+    { email: "alex@manahad.demo", username: "alex_kid", displayName: "Alex" },
+    { email: "mia@manahad.demo", username: "mia_kid", displayName: "Mia" },
+    { email: "zain@manahad.demo", username: "zain_kid", displayName: "Zain" },
   ];
 
   for (const c of childNames) {
@@ -279,9 +279,9 @@ async function main() {
   }
 
   await db.user.upsert({
-    where: { email: "mod@mathverse.demo" },
+    where: { email: "mod@manahad.demo" },
     create: {
-      email: "mod@mathverse.demo",
+      email: "mod@manahad.demo",
       username: "moderator",
       displayName: "Math Mod",
       passwordHash,
@@ -292,9 +292,9 @@ async function main() {
 
   console.log("  ✓ Demo accounts: 1 parent, 3 children, 1 moderator");
   console.log("  Login credentials:");
-  console.log("    Parent:    parent@mathverse.demo / password123");
-  console.log("    Child:     alex@mathverse.demo / password123");
-  console.log("    Moderator: mod@mathverse.demo / password123");
+  console.log("    Parent:    parent@manahad.demo / password123");
+  console.log("    Child:     alex@manahad.demo / password123");
+  console.log("    Moderator: mod@manahad.demo / password123");
   console.log("🎉 Seed complete!");
 }
 

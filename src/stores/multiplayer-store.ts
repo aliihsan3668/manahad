@@ -1,5 +1,5 @@
 /**
- * MathVerse — Multiplayer Store
+ * MANAHAD — Multiplayer Store
  *
  * Tracks live presence and chat via socket.io connection.
  * Connects to the mini-service at port 3003 via the gateway.

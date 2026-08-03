@@ -7,7 +7,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { useAppStore } from "@/stores/app-store";
 
 /**
- * MathVerse — Main Page
+ * MANAHAD — Main Page
  *
  * Single-page application entry point.
  * On mount, fetches the current session and renders the AppShell.
@@ -27,9 +27,10 @@ function Inner() {
         if (!cancelled) {
           if (data.user) {
             setUser(data.user);
-            // Set view based on role — parent goes to parent dashboard, mod to mod dashboard, child to world
-            if (data.user.role === "PARENT") setView("parent");
-            else if (data.user.role === "MODERATOR" || data.user.role === "ADMIN") setView("moderator");
+            // Route by loginMode (defaulting to STUDENT if absent).
+            const mode = data.user.loginMode ?? "STUDENT";
+            if (mode === "ADMIN") setView("moderator");
+            else if (mode === "PARENT") setView("parent");
             else setView("world");
           } else {
             setUser(null);
@@ -54,7 +55,7 @@ function Inner() {
             🧮
           </div>
           <div className="text-2xl font-extrabold bg-gradient-to-r from-emerald-600 via-amber-600 to-rose-600 bg-clip-text text-transparent">
-            MathVerse
+            MANAHAD
           </div>
           <div className="text-sm text-muted-foreground mt-2">Loading the magic...</div>
           <div className="mt-4 w-48 h-1 rounded-full bg-emerald-100 dark:bg-emerald-900 overflow-hidden mx-auto">

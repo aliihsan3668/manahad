@@ -1,7 +1,22 @@
 "use client";
 
 /**
- * MathVerse — Auth Screen
+ * MANAHAD — Auth Screen
+ *
+ * Two-tab cozy card:  🧒 Student   |   🔒 Admin
+ *
+ *   Student tab
+ *     - Login:     username + password (student or parent password both work)
+ *     - Register:  username (required), student password (4+), parent password (6+, optional),
+ *                  parent email (optional)
+ *
+ *   Admin tab
+ *     - Login:     username + password → opens Admin Dashboard
+ *
+ * After login, route by `loginMode`:
+ *   STUDENT → world,  PARENT → parent,  ADMIN → moderator
+ *
+ * Cozy aesthetic: rounded-3xl cards, rounded-full buttons, soft gradients.
  */
 
 import { useState } from "react";
@@ -14,76 +29,190 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useAppStore } from "@/stores/app-store";
 import { toast } from "sonner";
 import {
-  Brain, Trophy, Users, Shield, GraduationCap, LogIn, UserPlus, Zap,
+  Brain, Trophy, Users, Shield, LogIn, UserPlus, Zap, GraduationCap, Lock,
 } from "lucide-react";
+import type { UserSession } from "@/lib/types";
 
-type Role = "CHILD" | "PARENT" | "MODERATOR";
+type TopTab = "student" | "admin";
+type StudentMode = "login" | "register";
 
 export function AuthView() {
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [role, setRole] = useState<Role>("CHILD");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [parentEmail, setParentEmail] = useState("");
+  const [topTab, setTopTab] = useState<TopTab>("student");
+  const [studentMode, setStudentMode] = useState<StudentMode>("login");
+
+  // Student login fields
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+
+  // Student register fields
+  const [regUsername, setRegUsername] = useState("");
+  const [regStudentPassword, setRegStudentPassword] = useState("");
+  const [regParentPassword, setRegParentPassword] = useState("");
+  const [regParentEmail, setRegParentEmail] = useState("");
+
+  // Admin login fields
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
 
   const setUser = useAppStore((s) => s.setUser);
   const setView = useAppStore((s) => s.setView);
 
-  async function submit(e?: React.FormEvent, overrideEmail?: string, overridePassword?: string, overrideMode?: "login" | "register") {
+  function routeByLoginMode(user: UserSession) {
+    if (user.loginMode === "ADMIN") setView("moderator");
+    else if (user.loginMode === "PARENT") setView("parent");
+    else setView("world");
+  }
+
+  async function submitStudentLogin(e?: React.FormEvent) {
     e?.preventDefault();
     setLoading(true);
-    const emailToUse = overrideEmail ?? email;
-    const passwordToUse = overridePassword ?? password;
-    const modeToUse = overrideMode ?? mode;
     try {
-      const body =
-        modeToUse === "login"
-          ? { action: "login", email: emailToUse, password: passwordToUse }
-          : {
-              action: "register",
-              email: emailToUse,
-              password: passwordToUse,
-              username,
-              displayName: displayName || username,
-              role,
-              parentEmail: role === "CHILD" ? parentEmail : undefined,
-            };
-
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          action: "login",
+          username: loginUsername.trim(),
+          password: loginPassword,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? "Authentication failed");
+        toast.error(data.error ?? "Login failed");
         return;
       }
       setUser(data.user);
       toast.success(`Welcome, ${data.user.displayName}!`);
-      if (data.user.role === "PARENT") setView("parent");
-      else if (data.user.role === "MODERATOR") setView("moderator");
-      else setView("world");
-    } catch (err) {
+      routeByLoginMode(data.user as UserSession);
+    } catch {
       toast.error("Something went wrong. Try again.");
     } finally {
       setLoading(false);
     }
   }
 
-  function quickLogin(em: string) {
-    setEmail(em);
-    setPassword("password123");
-    setMode("login");
-    // Pass all values directly to submit to avoid stale state
-    setTimeout(() => submit(undefined, em, "password123", "login"), 100);
+  async function submitStudentRegister(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          username: regUsername.trim(),
+          studentPassword: regStudentPassword,
+          parentPassword: regParentPassword || undefined,
+          parentEmail: regParentEmail || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Registration failed");
+        return;
+      }
+      setUser(data.user);
+      toast.success(`Welcome to MANAHAD, ${data.user.displayName}!`);
+      routeByLoginMode(data.user as UserSession);
+    } catch {
+      toast.error("Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitAdminLogin(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          username: adminUsername.trim(),
+          password: adminPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Admin login failed");
+        return;
+      }
+      const u = data.user as UserSession;
+      if (u.loginMode !== "ADMIN") {
+        toast.error("This account is not an admin.");
+        return;
+      }
+      setUser(u);
+      toast.success(`Welcome back, Admin.`);
+      routeByLoginMode(u);
+    } catch {
+      toast.error("Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function quickStudentLogin() {
+    setLoginUsername("alex");
+    setLoginPassword("password123");
+    setStudentMode("login");
+    // Defer so state has settled before we fire the request.
+    setTimeout(() => {
+      void quickFire("alex", "password123");
+    }, 50);
+  }
+
+  async function quickFire(username: string, password: string) {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login", username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // If the quick-login user doesn't exist, register them on the fly.
+        if ((data.error ?? "").toLowerCase().includes("not found")) {
+          const regRes = await fetch("/api/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "register",
+              username,
+              studentPassword: password,
+            }),
+          });
+          const regData = await regRes.json();
+          if (!regRes.ok) {
+            toast.error(regData.error ?? "Quick login failed");
+            return;
+          }
+          setUser(regData.user);
+          toast.success(`Welcome to MANAHAD, ${regData.user.displayName}!`);
+          routeByLoginMode(regData.user as UserSession);
+          return;
+        }
+        toast.error(data.error ?? "Login failed");
+        return;
+      }
+      setUser(data.user);
+      toast.success(`Welcome, ${data.user.displayName}!`);
+      routeByLoginMode(data.user as UserSession);
+    } catch {
+      toast.error("Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-emerald-50 via-amber-50 to-rose-50 dark:from-slate-900 dark:via-emerald-950 dark:to-slate-900 relative overflow-hidden">
+      {/* Floating math symbols */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[
           { icon: "+", x: "10%", y: "15%", delay: 0 },
@@ -107,6 +236,7 @@ export function AuthView() {
       </div>
 
       <div className="w-full max-w-5xl grid lg:grid-cols-2 gap-8 relative z-10">
+        {/* Left: hero copy */}
         <div className="flex flex-col justify-center space-y-6 p-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -114,12 +244,12 @@ export function AuthView() {
             className="space-y-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 via-amber-400 to-rose-500 flex items-center justify-center text-3xl shadow-xl mv-float">
+              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-emerald-500 via-amber-400 to-rose-500 flex items-center justify-center text-3xl shadow-xl mv-float">
                 🧮
               </div>
               <div>
                 <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-600 via-amber-600 to-rose-600 bg-clip-text text-transparent">
-                  MathVerse
+                  MANAHAD
                 </h1>
                 <p className="text-sm text-muted-foreground">Where math meets magic ✨</p>
               </div>
@@ -138,7 +268,7 @@ export function AuthView() {
                 { icon: Users, label: "Play with Friends", color: "text-rose-600" },
                 { icon: Shield, label: "Child-Safe", color: "text-purple-600" },
               ].map((f) => (
-                <div key={f.label} className="flex items-center gap-2 p-2 rounded-lg bg-white/60 dark:bg-white/5 backdrop-blur-sm border border-white/40 dark:border-white/10">
+                <div key={f.label} className="flex items-center gap-2 p-2 rounded-2xl bg-white/60 dark:bg-white/5 backdrop-blur-sm border border-white/40 dark:border-white/10">
                   <f.icon className={`w-5 h-5 ${f.color}`} />
                   <span className="text-sm font-medium">{f.label}</span>
                 </div>
@@ -147,104 +277,209 @@ export function AuthView() {
           </motion.div>
         </div>
 
-        <Card className="shadow-2xl border-2 border-white/50 dark:border-white/10 backdrop-blur-md bg-white/80 dark:bg-card/80">
+        {/* Right: auth card */}
+        <Card className="shadow-2xl border-2 border-white/50 dark:border-white/10 backdrop-blur-md bg-white/80 dark:bg-card/80 rounded-3xl">
           <CardHeader>
-            <CardTitle className="text-2xl">{mode === "login" ? "Welcome Back!" : "Join MathVerse"}</CardTitle>
+            <CardTitle className="text-2xl">Welcome to MANAHAD</CardTitle>
             <CardDescription>
-              {mode === "login" ? "Sign in to continue your adventure" : "Create an account to start playing and learning"}
+              Pick a path to continue your adventure.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={mode} onValueChange={(v) => setMode(v as "login" | "register")}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="login"><LogIn className="w-4 h-4 mr-1" /> Login</TabsTrigger>
-                <TabsTrigger value="register"><UserPlus className="w-4 h-4 mr-1" /> Register</TabsTrigger>
+            <Tabs value={topTab} onValueChange={(v) => setTopTab(v as TopTab)}>
+              <TabsList className="grid w-full grid-cols-2 mb-4 rounded-full">
+                <TabsTrigger value="student" className="rounded-full">
+                  <GraduationCap className="w-4 h-4 mr-1.5" /> Student
+                </TabsTrigger>
+                <TabsTrigger value="admin" className="rounded-full">
+                  <Lock className="w-4 h-4 mr-1.5" /> Admin
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="login" className="space-y-3">
-                <form onSubmit={submit} className="space-y-3">
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="alex@mathverse.demo" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Signing in..." : "Sign In"}
+              {/* === STUDENT TAB === */}
+              <TabsContent value="student" className="space-y-3">
+                <Tabs value={studentMode} onValueChange={(v) => setStudentMode(v as StudentMode)}>
+                  <TabsList className="grid w-full grid-cols-2 mb-4 rounded-full">
+                    <TabsTrigger value="login" className="rounded-full">
+                      <LogIn className="w-4 h-4 mr-1.5" /> Login
+                    </TabsTrigger>
+                    <TabsTrigger value="register" className="rounded-full">
+                      <UserPlus className="w-4 h-4 mr-1.5" /> Register
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="login" className="space-y-3">
+                    <form onSubmit={submitStudentLogin} className="space-y-3">
+                      <div>
+                        <Label htmlFor="stu-username">Username</Label>
+                        <Input
+                          id="stu-username"
+                          value={loginUsername}
+                          onChange={(e) => setLoginUsername(e.target.value)}
+                          placeholder="alex"
+                          autoComplete="username"
+                          required
+                          className="rounded-2xl"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="stu-password">Password</Label>
+                        <Input
+                          id="stu-password"
+                          type="password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="Use your student or parent password"
+                          autoComplete="current-password"
+                          required
+                          className="rounded-2xl"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        className="w-full rounded-full"
+                        disabled={loading}
+                      >
+                        {loading ? "Signing in..." : "Sign In"}
+                      </Button>
+                    </form>
+                  </TabsContent>
+
+                  <TabsContent value="register" className="space-y-3">
+                    <form onSubmit={submitStudentRegister} className="space-y-3">
+                      <div>
+                        <Label htmlFor="reg-username">Username <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="reg-username"
+                          value={regUsername}
+                          onChange={(e) => setRegUsername(e.target.value)}
+                          placeholder="cool_math_kid"
+                          required
+                          minLength={3}
+                          className="rounded-2xl"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="reg-student-password">Student Password <span className="text-rose-500">*</span></Label>
+                        <Input
+                          id="reg-student-password"
+                          type="password"
+                          value={regStudentPassword}
+                          onChange={(e) => setRegStudentPassword(e.target.value)}
+                          placeholder="At least 4 characters"
+                          required
+                          minLength={4}
+                          className="rounded-2xl"
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Used by the student to log in.
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="reg-parent-password">Parent Password (optional)</Label>
+                        <Input
+                          id="reg-parent-password"
+                          type="password"
+                          value={regParentPassword}
+                          onChange={(e) => setRegParentPassword(e.target.value)}
+                          placeholder="At least 6 characters"
+                          minLength={6}
+                          className="rounded-2xl"
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          If set, parents can log in with the same username to view reports.
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="reg-parent-email">Parent Email (optional)</Label>
+                        <Input
+                          id="reg-parent-email"
+                          type="email"
+                          value={regParentEmail}
+                          onChange={(e) => setRegParentEmail(e.target.value)}
+                          placeholder="parent@example.com"
+                          className="rounded-2xl"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        className="w-full rounded-full"
+                        disabled={loading}
+                      >
+                        {loading ? "Creating account..." : "Create Account"}
+                      </Button>
+                    </form>
+                  </TabsContent>
+                </Tabs>
+
+                {/* Demo hint */}
+                <div className="mt-6 pt-4 border-t rounded-2xl bg-muted/40 -mx-2 px-4 py-3">
+                  <p className="text-xs text-muted-foreground text-center mb-2 flex items-center justify-center gap-1">
+                    <Zap className="w-3 h-3" /> Quick demo
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={quickStudentLogin}
+                    className="w-full rounded-full flex items-center justify-center gap-2"
+                  >
+                    <GraduationCap className="w-4 h-4 text-emerald-600" />
+                    <span>Try: alex / password123</span>
                   </Button>
-                </form>
+                  <p className="text-[10px] text-muted-foreground text-center mt-2">
+                    We&apos;ll create the demo account for you if it doesn&apos;t exist yet.
+                  </p>
+                </div>
               </TabsContent>
 
-              <TabsContent value="register" className="space-y-3">
-                <form onSubmit={submit} className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["CHILD", "PARENT", "MODERATOR"] as Role[]).map((r) => (
-                      <Button
-                        key={r}
-                        type="button"
-                        variant={role === r ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setRole(r)}
-                        className="flex flex-col gap-1 h-auto py-2"
-                      >
-                        {r === "CHILD" ? <GraduationCap className="w-4 h-4" /> : r === "PARENT" ? <Shield className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-                        <span className="text-xs">{r === "CHILD" ? "Child" : r === "PARENT" ? "Parent" : "Moderator"}</span>
-                      </Button>
-                    ))}
+              {/* === ADMIN TAB === */}
+              <TabsContent value="admin" className="space-y-3">
+                <form onSubmit={submitAdminLogin} className="space-y-3">
+                  <div>
+                    <Label htmlFor="admin-username">Admin Username</Label>
+                    <Input
+                      id="admin-username"
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value)}
+                      placeholder="admin username"
+                      autoComplete="username"
+                      required
+                      className="rounded-2xl"
+                    />
                   </div>
                   <div>
-                    <Label htmlFor="username">Username</Label>
-                    <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="cool_math_kid" required minLength={3} />
+                    <Label htmlFor="admin-password">Password</Label>
+                    <Input
+                      id="admin-password"
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      required
+                      className="rounded-2xl"
+                    />
                   </div>
-                  <div>
-                    <Label htmlFor="displayName">Display Name</Label>
-                    <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Alex" />
-                  </div>
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="alex@example.com" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" required minLength={6} />
-                  </div>
-                  {role === "CHILD" && (
-                    <div>
-                      <Label htmlFor="parentEmail">Parent&apos;s Email (optional)</Label>
-                      <Input id="parentEmail" type="email" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} placeholder="parent@example.com" />
-                    </div>
-                  )}
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Creating account..." : "Create Account"}
+                  <Button
+                    type="submit"
+                    className="w-full rounded-full"
+                    disabled={loading}
+                  >
+                    {loading ? "Signing in..." : (
+                      <span className="flex items-center justify-center gap-2">
+                        <Lock className="w-4 h-4" /> Access Admin Dashboard
+                      </span>
+                    )}
                   </Button>
                 </form>
+
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Admins manage users, view platform stats, and review moderation actions.
+                  </p>
+                </div>
               </TabsContent>
             </Tabs>
-
-            <div className="mt-6 pt-4 border-t">
-              <p className="text-xs text-muted-foreground text-center mb-2 flex items-center justify-center gap-1">
-                <Zap className="w-3 h-3" /> Quick demo logins:
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant="outline" size="sm" onClick={() => quickLogin("alex@mathverse.demo")} className="flex flex-col gap-0.5 h-auto py-2">
-                  <GraduationCap className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs">Child</span>
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => quickLogin("parent@mathverse.demo")} className="flex flex-col gap-0.5 h-auto py-2">
-                  <Shield className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs">Parent</span>
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => quickLogin("mod@mathverse.demo")} className="flex flex-col gap-0.5 h-auto py-2">
-                  <Users className="w-4 h-4 text-rose-600" />
-                  <span className="text-xs">Mod</span>
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center mt-2">
-                Password: <code className="bg-muted px-1 py-0.5 rounded">password123</code>
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>

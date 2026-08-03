@@ -1,7 +1,7 @@
 /**
- * MathVerse — Cosmetics Catalog
+ * MANAHAD — Cosmetics Catalog
  *
- * All cosmetic items available in MathVerse. Cosmetics NEVER give gameplay
+ * All cosmetic items available in MANAHAD. Cosmetics NEVER give gameplay
  * advantages — they are purely visual (Roblox/Animal Crossing style).
  *
  * Categories: HAT | HAIR | OUTFIT | ACCESSORY | SHOES | BACKPACK | PET | TRAIL | EMOTE

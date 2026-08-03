@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Quests & Achievements View
+ * MANAHAD — Quests & Achievements View
  *
  * Two tabs:
  *   - Quests: daily / weekly / monthly with progress, reward info, claim buttons

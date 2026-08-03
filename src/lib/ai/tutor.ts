@@ -1,5 +1,5 @@
 /**
- * MathVerse — AI Tutor
+ * MANAHAD — AI Tutor
  *
  * Socratic, child-friendly math tutor.
  * Never shames, never reveals answers immediately, asks guiding questions,
@@ -21,7 +21,7 @@ import { getTopicBySlug } from "@/lib/curriculum/data";
 // SYSTEM PROMPT
 // ============================================================
 
-const TUTOR_SYSTEM_PROMPT = `You are Coach Quark, the friendly AI math tutor in MathVerse — a multiplayer math game for children aged 8-13.
+const TUTOR_SYSTEM_PROMPT = `You are Coach Quark, the friendly AI math tutor in MANAHAD — a multiplayer math game for children aged 8-13.
 
 YOUR PERSONALITY:
 - Warm, encouraging, playful. Use the child's name when known.

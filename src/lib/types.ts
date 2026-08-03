@@ -1,5 +1,5 @@
 /**
- * MathVerse — Core Type System
+ * MANAHAD — Core Type System
  * Centralized domain types shared across client, server, and AI modules.
  */
 
@@ -23,6 +23,7 @@ export interface UserSession {
   coins: number;
   streak: number;
   parentSettings?: ParentSettings;
+  loginMode?: "STUDENT" | "PARENT" | "ADMIN";
 }
 
 export interface AvatarConfig {
@@ -254,6 +255,35 @@ export interface ChatMessageDTO {
   isOwn?: boolean;
 }
 
+export type CollectibleType = "coin" | "gem" | "star" | "book" | "crystal";
+
+export interface WorldCollectible {
+  id: string;
+  type: CollectibleType;
+  x: number;
+  y: number;
+  value: number;
+  respawnsAfterSec: number;
+}
+
+export type InteractableType =
+  | "math-fountain"
+  | "daily-chest"
+  | "teleport-pad"
+  | "wishing-well"
+  | "treasure-dig"
+  | "lucky-fountain";
+
+export interface WorldInteractable {
+  id: string;
+  type: InteractableType;
+  x: number;
+  y: number;
+  label: string;
+  emoji: string;
+  cooldownSec: number;
+}
+
 export interface WorldArea {
   slug: string;
   name: string;
@@ -265,6 +295,8 @@ export interface WorldArea {
   portals: { x: number; y: number; target: string; label: string }[];
   npcs: { slug: string; x: number; y: number }[];
   decorations: { type: string; x: number; y: number; w: number; h: number; color: string }[];
+  collectibles: WorldCollectible[];
+  interactables: WorldInteractable[];
 }
 
 // ============================================================
@@ -341,6 +373,7 @@ export interface ProgressDashboard {
 // ============================================================
 
 export type AIProviderName =
+  | "groq"
   | "groq"
   | "gemini"
   | "openrouter"

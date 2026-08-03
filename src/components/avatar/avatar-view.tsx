@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Avatar Customization View
+ * MANAHAD — Avatar Customization View
  *
  * Left: large emoji-based avatar preview that updates live with equipped items.
  * Right: tabbed grid of all cosmetics per category. Owned items highlight and

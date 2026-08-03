@@ -1,5 +1,5 @@
 /**
- * MathVerse — AI Provider Abstraction Layer
+ * MANAHAD — AI Provider Abstraction Layer
  *
  * Supports: Gemini | OpenRouter | DeepSeek | Qwen | Llama | Mistral | Ollama | ZAI
  *
@@ -207,6 +207,12 @@ class GeminiProvider implements AIProvider {
 const PROVIDERS: Record<AIProviderName, AIProvider> = {
   zai: new ZAIProvider(),
   gemini: new GeminiProvider(),
+  groq: makeOpenAICompatible({
+    name: "groq",
+    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: config.ai.keys.groq,
+    defaultModel: "llama-3.3-70b-versatile",
+  }),
   groq: makeOpenAICompatible({
     name: "groq",
     baseURL: "https://api.groq.com/openai/v1",

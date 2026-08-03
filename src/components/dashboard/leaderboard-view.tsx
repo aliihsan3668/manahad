@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Leaderboard View
+ * MANAHAD — Leaderboard View
  *
  * Fetches /api/leaderboard?limit=20 and shows:
  *   - Top 3 podium (gold / silver / bronze)
@@ -95,7 +95,7 @@ export function LeaderboardView() {
             <Trophy className="w-7 h-7 text-amber-600" /> Leaderboard
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Top math learners across MathVerse.
+            Top math learners across MANAHAD.
           </p>
         </div>
         <div className="flex gap-2">

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Tutor Panel
+ * MANAHAD — Tutor Panel
  *
  * Inline floating chat panel that opens when the learner clicks "Ask Tutor"
  * during practice. Calls POST /api/tutor with the active questionId so the

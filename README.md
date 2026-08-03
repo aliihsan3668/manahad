@@ -1,4 +1,4 @@
-# MathVerse
+# MANAHAD
 
 > A multiplayer mathematics learning platform for children aged 8-13, where math becomes the natural requirement for participating in a magical world — not the primary focus.
 
@@ -8,9 +8,9 @@
 [![Prisma](https://img.shields.io/badge/Prisma-6-2d3748)](https://www.prisma.io/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-## What is MathVerse?
+## What is MANAHAD?
 
-MathVerse combines the engagement of a multiplayer game world (inspired by Roblox, Club Penguin, Animal Crossing) with rigorous mathematics learning. Children explore a persistent online world with friends, customize avatars, complete quests, and chat — and **everything** is powered by learning mathematics.
+MANAHAD combines the engagement of a multiplayer game world (inspired by Roblox, Club Penguin, Animal Crossing) with rigorous mathematics learning. Children explore a persistent online world with friends, customize avatars, complete quests, and chat — and **everything** is powered by learning mathematics.
 
 **Core Philosophy**: Learning should feel invisible. Social interaction should be the reward. Curiosity should drive progress.
 
@@ -150,7 +150,7 @@ bun run db:push
 bun run scripts/seed.ts
 
 # Start the realtime WebSocket service (in a separate terminal)
-cd mini-services/mathverse-realtime
+cd mini-services/manahad-realtime
 bun install
 bun run dev
 
@@ -162,11 +162,11 @@ bun run dev
 
 | Role     | Email                     | Password       |
 |----------|---------------------------|----------------|
-| Child    | alex@mathverse.demo       | password123    |
-| Child    | mia@mathverse.demo        | password123    |
-| Child    | zain@mathverse.demo       | password123    |
-| Parent   | parent@mathverse.demo     | password123    |
-| Moderator| mod@mathverse.demo        | password123    |
+| Child    | alex@manahad.demo       | password123    |
+| Child    | mia@manahad.demo        | password123    |
+| Child    | zain@manahad.demo       | password123    |
+| Parent   | parent@manahad.demo     | password123    |
+| Moderator| mod@manahad.demo        | password123    |
 
 ### Environment Variables
 
@@ -197,13 +197,13 @@ WS_PORT=3003
 ## Project Structure
 
 ```
-mathverse/
+manahad/
 ├── prisma/
 │   └── schema.prisma              # 24 models, fully normalized
 ├── scripts/
 │   └── seed.ts                    # Database seeder
 ├── mini-services/
-│   └── mathverse-realtime/        # Socket.io service (port 3003)
+│   └── manahad-realtime/        # Socket.io service (port 3003)
 │       ├── index.ts
 │       └── package.json
 ├── src/
@@ -338,7 +338,7 @@ Run `bun run db:push` to create all tables, then `bun run scripts/seed.ts` to po
 
 1. **Database**: Create a Supabase project, copy the connection string
 2. **Schema**: Set `provider = "postgresql"` in `prisma/schema.prisma`, run `bun run db:push`
-3. **Realtime**: Deploy the `mini-services/mathverse-realtime` as a separate service (Render, Railway, or Supabase Edge Functions)
+3. **Realtime**: Deploy the `mini-services/manahad-realtime` as a separate service (Render, Railway, or Supabase Edge Functions)
 4. **Frontend**: Deploy to Vercel — `vercel --prod`
 5. **Environment**: Set all env vars in Vercel project settings
 
@@ -423,4 +423,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-**MathVerse** — Where math meets magic. ✨
+**MANAHAD** — Where math meets magic. ✨

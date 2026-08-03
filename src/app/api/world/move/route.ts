@@ -43,6 +43,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Keep the user's lastActiveAt fresh so /api/online and the admin dashboard
+    // can surface them as currently online.
+    await db.user.update({
+      where: { id: user.id },
+      data: { lastActiveAt: new Date() },
+    });
+
     return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

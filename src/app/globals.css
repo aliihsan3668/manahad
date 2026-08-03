@@ -44,8 +44,8 @@
 }
 
 :root {
-  --radius: 0.875rem;
-  /* MathVerse brand: playful but professional — emerald + amber + coral on warm cream */
+  --radius: 1.25rem;
+  /* MANAHAD brand: playful but professional — emerald + amber + coral on warm cream */
   --background: oklch(0.98 0.012 95);
   --foreground: oklch(0.18 0.02 240);
   --card: oklch(1 0 0);
@@ -123,6 +123,15 @@
   }
 }
 
+
+/* COZY UI — rounder, softer */
+button[class*="rounded"], [class*="bg-primary"], [class*="bg-secondary"], [class*="bg-accent"], [class*="bg-destructive"] { border-radius: var(--radius) !important; }
+button.h-9:not([class*="rounded-full"]):not([class*="rounded-none"]):not([class*="icon"]) { border-radius: calc(var(--radius) - 2px) !important; }
+button[class*="w-9"][class*="h-9"], button[class*="w-10"][class*="h-10"], button[class*="w-8"][class*="h-8"] { border-radius: 9999px !important; }
+[class*="shadow-md"], [class*="shadow-lg"], [class*="shadow-xl"], [class*="shadow-2xl"] { box-shadow: 0 4px 24px -8px rgba(0,0,0,0.12), 0 2px 8px -4px rgba(0,0,0,0.06) !important; }
+button, a, [role="button"] { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+button:active, [role="button"]:active { transform: scale(0.97) !important; }
+
 /* ============================================================
    ACCESSIBILITY: Dyslexia-friendly font
    When .dyslexia-font is applied, switch to a more readable font.
@@ -176,7 +185,7 @@
 }
 .mv-scroll::-webkit-scrollbar-thumb:hover { background: oklch(0.55 0.16 155); }
 
-/* MathVerse animations */
+/* MANAHAD animations */
 @keyframes mv-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }

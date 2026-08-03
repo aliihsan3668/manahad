@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MathVerse — Practice View
+ * MANAHAD — Practice View
  *
  * Three-phase practice flow:
  *   Phase 1 — Setup: pick curriculum / grade / topic / difficulty / mode

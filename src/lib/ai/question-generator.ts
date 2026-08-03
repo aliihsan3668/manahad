@@ -1,5 +1,5 @@
 /**
- * MathVerse — AI Question Generator
+ * MANAHAD — AI Question Generator
  *
  * Generates unlimited math questions per topic using LLM, then validates
  * them with the deterministic grading engine to ensure the expected answer

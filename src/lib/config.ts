@@ -36,6 +36,7 @@ export const config = {
   ai: {
     provider: env("AI_PROVIDER", "groq") as
       | "groq"
+      | "groq"
       | "gemini"
       | "openrouter"
       | "deepseek"
@@ -49,6 +50,7 @@ export const config = {
     maxTokens: envInt("AI_MAX_TOKENS", 2048),
     timeoutMs: envInt("AI_TIMEOUT_MS", 30000),
     keys: {
+      groq: env("GROQ_API_KEY"),
       groq: env("GROQ_API_KEY"),
       gemini: env("GEMINI_API_KEY"),
       openrouter: env("OPENROUTER_API_KEY"),
@@ -112,7 +114,7 @@ export const config = {
   },
 
   auth: {
-    sessionSecret: env("NEXTAUTH_SECRET", "mathverse-dev-secret-change-me"),
+    sessionSecret: env("NEXTAUTH_SECRET", "manahad-dev-secret-change-me"),
     sessionMaxAge: 60 * 60 * 24 * 7, // 7 days
   },
 } as const;
