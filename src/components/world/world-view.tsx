@@ -28,6 +28,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useMultiplayerStore } from "@/stores/multiplayer-store";
 import { renderAvatar } from "./avatar-renderer";
 import { WhoOnlinePanel } from "./who-online-panel";
+import { MiniGamesMenu } from "./mini-games";
 import {
   WORLD_AREAS, getAreaBySlug, getNPCBySlug, COLLECTIBLE_EMOJI,
 } from "@/lib/game/world";
@@ -131,6 +132,7 @@ export function WorldView() {
 
   // === Teleport pad menu state ===
   const [showTeleportMenu, setShowTeleportMenu] = useState(false);
+  const [showGames, setShowGames] = useState(false);
 
   // === Track the nearest interactable id for the "Press T" prompt ===
   const [nearInteractableId, setNearInteractableId] = useState<string | null>(null);
@@ -1221,7 +1223,7 @@ export function WorldView() {
         <div className="flex items-center gap-2 pointer-events-auto">
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl px-3 py-2 shadow-md border border-white/30 dark:border-white/10 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 mv-pulse-glow" />
-            <span className="text-xs font-semibold">{connected ? "Online" : "Connecting..."}</span>
+            <span className="text-xs font-semibold">{connected ? "Online" : "Solo"}</span>
           </div>
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl px-3 py-2 shadow-md border border-white/30 dark:border-white/10 flex items-center gap-2">
             <Users className="w-4 h-4 text-purple-600" />
@@ -1503,14 +1505,21 @@ export function WorldView() {
         )}
       </AnimatePresence>
 
-      {/* Quick action: Go to Practice */}
-      <div className="absolute top-20 left-4 z-20">
+      {/* Quick actions: Practice + Games */}
+      <div className="absolute top-20 left-4 z-20 flex gap-2 flex-wrap">
         <Button
           onClick={() => setView("practice")}
-          className="bg-gradient-to-r from-emerald-500 to-amber-500 hover:opacity-90 shadow-lg"
+          className="bg-gradient-to-r from-emerald-500 to-amber-500 hover:opacity-90 shadow-lg rounded-full"
           size="sm"
         >
-          <Zap className="w-4 h-4 mr-1" /> Practice Math
+          <Zap className="w-4 h-4 mr-1" /> Practice
+        </Button>
+        <Button
+          onClick={() => setShowGames(true)}
+          className="bg-gradient-to-r from-purple-500 to-rose-500 hover:opacity-90 shadow-lg rounded-full"
+          size="sm"
+        >
+          <Gamepad2 className="w-4 h-4 mr-1" /> Games
         </Button>
       </div>
 
@@ -1530,6 +1539,23 @@ export function WorldView() {
 
       {/* Floating Who's Online panel */}
       <WhoOnlinePanel />
+
+      {/* Mini-Games Menu */}
+      <AnimatePresence>
+        {showGames && (
+          <MiniGamesMenu onClose={(result) => {
+            setShowGames(false);
+            if (result.score > 0) {
+              updateUser({
+                xp: user!.xp + result.xpEarned,
+                brainEnergy: Math.min(user!.maxBrainEnergy, user!.brainEnergy + result.brainEnergyEarned),
+                coins: user!.coins + result.score,
+              });
+              toast.success(`🎯 Score: ${result.score} • +${result.xpEarned} XP • +${result.brainEnergyEarned} Brain Energy!`);
+            }
+          }} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

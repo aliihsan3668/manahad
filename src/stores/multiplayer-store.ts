@@ -45,14 +45,33 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
     // Don't double-connect
     if (get().socket?.connected) return;
 
-    const socket = io("/?XTransformPort=3003", {
-      transports: ["websocket"],
-      forceNew: true,
-      reconnection: true,
-      reconnectionAttempts: 8,
-      reconnectionDelay: 1500,
-      timeout: 10000,
-    });
+    // In production (Railway/Vercel), connect to the WebSocket service URL directly
+    // In development (sandbox), use the Caddy gateway with XTransformPort
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+    
+    // If no WS URL and not in dev environment, skip connection (solo mode)
+    if (!wsUrl && process.env.NODE_ENV === "production") {
+      console.log("[multiplayer] Solo mode — no WebSocket URL configured");
+      return;
+    }
+    
+    const socket = wsUrl
+      ? io(wsUrl, {
+          transports: ["websocket"],
+          forceNew: true,
+          reconnection: true,
+          reconnectionAttempts: 8,
+          reconnectionDelay: 1500,
+          timeout: 10000,
+        })
+      : io("/?XTransformPort=3003", {
+          transports: ["websocket"],
+          forceNew: true,
+          reconnection: true,
+          reconnectionAttempts: 8,
+          reconnectionDelay: 1500,
+          timeout: 10000,
+        });
 
     socket.on("connect", () => {
       set({ connected: true });
