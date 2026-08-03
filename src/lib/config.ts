@@ -1,5 +1,5 @@
 /**
- * MathVerse — Central configuration
+ * MANAHAD — Central configuration
  * Reads from environment with safe fallbacks.
  * All secrets/tokens live here; no other module reads process.env directly.
  */
@@ -24,7 +24,7 @@ function envBool(key: string, fallback: boolean): boolean {
 
 export const config = {
   app: {
-    name: "MathVerse",
+    name: "MANAHAD",
     version: "1.0.0",
     description: "Multiplayer mathematics learning platform for children",
     url: env("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
@@ -32,9 +32,10 @@ export const config = {
   },
 
   // AI provider selection — set AI_PROVIDER to one of:
-  // gemini | openrouter | deepseek | qwen | llama | mistral | ollama | zai
+  // groq | gemini | openrouter | deepseek | qwen | llama | mistral | ollama | zai
   ai: {
-    provider: env("AI_PROVIDER", "zai") as
+    provider: env("AI_PROVIDER", "groq") as
+      | "groq"
       | "gemini"
       | "openrouter"
       | "deepseek"
@@ -48,6 +49,7 @@ export const config = {
     maxTokens: envInt("AI_MAX_TOKENS", 2048),
     timeoutMs: envInt("AI_TIMEOUT_MS", 30000),
     keys: {
+      groq: env("GROQ_API_KEY"),
       gemini: env("GEMINI_API_KEY"),
       openrouter: env("OPENROUTER_API_KEY"),
       deepseek: env("DEEPSEEK_API_KEY"),

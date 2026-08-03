@@ -207,6 +207,12 @@ class GeminiProvider implements AIProvider {
 const PROVIDERS: Record<AIProviderName, AIProvider> = {
   zai: new ZAIProvider(),
   gemini: new GeminiProvider(),
+  groq: makeOpenAICompatible({
+    name: "groq",
+    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: config.ai.keys.groq,
+    defaultModel: "llama-3.3-70b-versatile",
+  }),
   openrouter: makeOpenAICompatible({
     name: "openrouter",
     baseURL: "https://openrouter.ai/api/v1",

@@ -341,6 +341,7 @@ export interface ProgressDashboard {
 // ============================================================
 
 export type AIProviderName =
+  | "groq"
   | "gemini"
   | "openrouter"
   | "deepseek"
