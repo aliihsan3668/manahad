@@ -12,4 +12,4 @@ ENV PORT=3000
 ENV NODE_ENV=production
 ENV DATABASE_URL=file:/app/db/manahad.db
 EXPOSE $PORT
-CMD ["sh", "-c", "bunx prisma db push --accept-data-loss && bunx next start -p ${PORT:-3000} -H 0.0.0.0"]
+CMD ["sh", "-c", "bunx prisma db push --accept-data-loss && bun run scripts/seed.ts && bunx next start -p ${PORT:-3000} -H 0.0.0.0"]

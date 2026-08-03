@@ -290,11 +290,25 @@ async function main() {
     update: {},
   });
 
-  console.log("  ✓ Demo accounts: 1 parent, 3 children, 1 moderator");
-  console.log("  Login credentials:");
-  console.log("    Parent:    parent@manahad.demo / password123");
-  console.log("    Child:     alex@manahad.demo / password123");
-  console.log("    Moderator: mod@manahad.demo / password123");
+  // Create admin account
+  await db.user.upsert({
+    where: { username: "mxaliihsan" },
+    create: {
+      email: "admin@manahad.local",
+      username: "mxaliihsan",
+      displayName: "Admin",
+      passwordHash: createPasswordHash("M12a34I56"),
+      role: "ADMIN",
+    },
+    update: {},
+  });
+
+  console.log("  ✓ Demo accounts: 1 parent, 3 children, 1 moderator, 1 admin");
+  console.log("  Login credentials (use username):");
+  console.log("    Student:   alex_kid / password123");
+  console.log("    Parent:    parent_demo / password123");
+  console.log("    Moderator: moderator / password123");
+  console.log("    Admin:     mxaliihsan / M12a34I56");
   console.log("🎉 Seed complete!");
 }
 
